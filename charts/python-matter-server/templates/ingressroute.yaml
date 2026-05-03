@@ -1,0 +1,31 @@
+{{- if .Values.networking.traefikIngress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "python-matter-server.fullname" . }}
+  labels:
+    {{- include "python-matter-server.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    {{- toYaml .Values.networking.traefikIngress.entryPoints | nindent 4 }}
+  routes:
+    - match: Host(`{{ .Values.networking.traefikIngress.host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "python-matter-server.fullname" . }}
+          port: ws
+      {{- with .Values.networking.traefikIngress.middlewares }}
+      middlewares:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+  {{- if .Values.networking.traefikIngress.tls.enabled }}
+  tls:
+    {{- if .Values.networking.traefikIngress.tls.secretName }}
+    secretName: {{ .Values.networking.traefikIngress.tls.secretName }}
+    {{- else if .Values.networking.traefikIngress.tls.certResolver }}
+    certResolver: {{ .Values.networking.traefikIngress.tls.certResolver }}
+    {{- end }}
+  {{- end }}
+{{- end }}

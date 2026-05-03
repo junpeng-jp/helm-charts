@@ -1,0 +1,94 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ghcr.io
+  repository: home-assistant-libs/python-matter-server
+  tag: ""           # defaults to Chart.AppVersion
+  digest: ""        # takes precedence over tag when set (e.g. sha256:abc123)
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+
+initContainers: []
+
+env:
+  - name: TZ
+    value: UTC
+
+secretVolumeMounts: []
+
+extraVolumes: []
+extraVolumeMounts: []
+
+# No HTTP health endpoint — probes omitted (WebSocket-only server on port 5580)
+
+resources:
+  requests:
+    memory: 128Mi
+    cpu: 50m
+  limits:
+    memory: 512Mi
+    # cpu intentionally omitted — matter commissioning can spike briefly
+
+podSecurityContext: {}
+
+containerSecurityContext: {}
+
+pod:
+  annotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  # hostNetwork is required for mDNS/Thread discovery on overlay-network CNIs (e.g. k3s/Flannel).
+  # dnsPolicy is automatically set to ClusterFirstWithHostNet when hostNetwork is true.
+  # Pin the pod to a specific node with nodeSelector for consistent LAN interface access.
+  hostNetwork: true
+
+networking:
+  service:
+    type: ClusterIP
+    port: 5580
+
+  ingress:
+    enabled: false
+    className: nginx
+    annotations: {}
+    host: matter.example.com
+    tls:
+      enabled: false
+      secretName: python-matter-server-tls
+
+  traefikIngress:
+    enabled: false
+    entryPoints:
+      - websecure
+    host: matter.example.com
+    middlewares: []
+    tls:
+      enabled: false
+      secretName: ""
+      certResolver: ""
+
+persistence:
+  enabled: true
+  storageClass: ""        # "" uses the cluster default
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+  labels: {}
+  existingClaim: ""
+
+monitor:
+  metric:
+    enabled: false
+    path: /metrics
+    port: ws
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}

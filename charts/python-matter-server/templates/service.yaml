@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "python-matter-server.fullname" . }}
+  labels:
+    {{- include "python-matter-server.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.networking.service.type }}
+  selector:
+    {{- include "python-matter-server.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: ws
+      port: {{ .Values.networking.service.port }}
+      targetPort: ws
+      protocol: TCP
