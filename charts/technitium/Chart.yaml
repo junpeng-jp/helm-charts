@@ -2,7 +2,7 @@ apiVersion: v2
 name: technitium
 description: Technitium DNS server with web dashboard
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "14.3.0"
 keywords:
   - dns
