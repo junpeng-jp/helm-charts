@@ -18,7 +18,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          set-safe-directory: "$GITHUB_WORKSPACE"
+
+      - name: Add github workspace as safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE" 
 
       - name: Detect chart changes
         id: detect-chart-changes
