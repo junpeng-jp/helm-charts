@@ -1,15 +1,22 @@
 {
-  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.1/.schema/devbox.schema.json",
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.2/.schema/devbox.schema.json",
   "packages": [
     "telepresence2@2.25.1",
     "kubernetes-helm@3.19.1",
     "helmfile@1.1.9",
     "kubectl@1.34.3",
-    "chart-testing@3.14.0"
+    "chart-testing@3.14.0",
+    "kind@0.31.0"
   ],
   "shell": {
     "init_hook": [
       "helm plugin list | grep -q '^diff' || helm plugin install https://github.com/databus23/helm-diff"
-    ]
+    ],
+    "scripts": {
+      "kind:setup": "kind create cluster --config config/kind-config.yaml && kubectl cluster-info --context kind-helm-chart-test",
+      "kind:teardown": "kind delete cluster --name helm-chart-test",
+      "ct:test": "bash scripts/ct-test.sh",
+      "ct:test-chart": "bash scripts/ct-test.sh"
+    }
   }
 }

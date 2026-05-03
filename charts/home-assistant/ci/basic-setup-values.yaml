@@ -1,0 +1,10 @@
+image:
+  tag: "2025.5.3"
+
+pod:
+  hostNetwork: false
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 1Gi
