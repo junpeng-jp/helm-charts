@@ -1,5 +1,12 @@
+global:
+  imageRegistry: ""        # overrides image.registry
+  imagePullSecrets: []     # merged with image.pullSecrets
+  storageClass: ""         # overrides persistence.storageClass
+
 nameOverride: ""
 fullnameOverride: ""
+
+replicaCount: 1
 
 image:
   registry: docker.io
@@ -16,6 +23,7 @@ serviceAccount:
 
 initContainers: []
 
+# Raw env passthrough — use for settings not modelled in config.
 env: []
 
 secretVolumeMounts: []
@@ -50,6 +58,14 @@ resources:
 
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 10004
+  runAsGroup: 10004
+  fsGroup: 10004
+  sysctls: []
+  # Recommended sysctl to expand the local port range (mirrors the docker-compose default):
+  # sysctls:
+  #   - name: net.ipv4.ip_local_port_range
+  #     value: "1024 65535"
 
 containerSecurityContext:
   allowPrivilegeEscalation: false
@@ -67,23 +83,77 @@ pod:
 
 networking:
   service:
-    type: LoadBalancer
-    port: 5380
+    clusterIp:
+      enabled: false
+      ports:
+        http:
+          port: 5380
+          protocol: TCP
+    loadBalancer:
+      enabled: true
+      ports:
+        http:
+          port: 5380
+          protocol: TCP
+        # DNS — UDP and TCP share the same port number; enable both together
+        dns-udp:
+          port: 53
+          protocol: UDP
+        dns-tcp:
+          port: 53
+          protocol: TCP
+        # DNS over TLS
+        dot:
+          port: 853
+          protocol: TCP
+          enabled: false
+        # DNS over QUIC
+        doq:
+          port: 853
+          protocol: UDP
+          enabled: false
+        # DNS over HTTPS
+        doh-tcp:
+          port: 443
+          protocol: TCP
+          enabled: false
+        doh-udp:
+          port: 443
+          protocol: UDP
+          enabled: false
+        # DNS over HTTP (plain, for reverse-proxy upstream)
+        # enables DNS_SERVER_OPTIONAL_PROTOCOL_DNS_OVER_HTTP
+        doh-plain:
+          port: 8053
+          protocol: TCP
+          enabled: false
 
-  ingress:
+  # HTTPS settings for the Technitium web console.
+  webPortal:
+    https:
+      enabled: false
+      port: 53443       # DNS_SERVER_WEB_SERVICE_HTTPS_PORT
+      selfSignedCert: false         # DNS_SERVER_WEB_SERVICE_USE_SELF_SIGNED_CERT
+      httpToTlsRedirect: false      # DNS_SERVER_WEB_SERVICE_HTTP_TO_TLS_REDIRECT
+
+ingress:
+  gateway:
     enabled: false
-    className: nginx
-    annotations: {}
-    host: dns.example.com
+    parentRefs:
+      - name: my-gateway
+        namespace: default
+    hostnames:
+      - dns.example.com
     tls:
       enabled: false
-      secretName: technitium-tls
+      secretName: ""
 
-  traefikIngress:
+  traefik:
     enabled: false
     entryPoints:
       - websecure
-    host: dns.example.com
+    hostnames:
+      - dns.example.com
     middlewares: []
     tls:
       enabled: false
@@ -109,9 +179,36 @@ monitor:
     scrapeTimeout: 10s
     labels: {}
 
-# DNS protocol ports — Technitium-specific.
-dnsPorts:
-  dns: 53         # DNS over UDP and TCP
-  dot: 853        # DNS over TLS
-  doh: 8053       # DNS over HTTPS (plain HTTP upstream)
-  https: 53443    # DNS over HTTPS (TLS)
+# Technitium server configuration — rendered as container env vars.
+# Use env[] for any setting not modelled here.
+config:
+  domain: dns-server    # DNS_SERVER_DOMAIN
+
+  # To set the admin password, mount a secret via secretVolumeMounts and set:
+  #   env:
+  #     - name: DNS_SERVER_ADMIN_PASSWORD_FILE
+  #       value: /run/secrets/<secretName>/password
+
+  preferIPv6: false     # DNS_SERVER_PREFER_IPV6
+
+  recursion:
+    mode: AllowOnlyForPrivateNetworks   # DNS_SERVER_RECURSION: Allow | Deny | AllowOnlyForPrivateNetworks | UseSpecifiedNetworkACL
+    networkACL: ""                       # DNS_SERVER_RECURSION_NETWORK_ACL (UseSpecifiedNetworkACL only)
+
+  blocking:
+    enabled: false        # DNS_SERVER_ENABLE_BLOCKING
+    allowTxtReport: false # DNS_SERVER_ALLOW_TXT_BLOCKING_REPORT
+    blockListUrls: []     # DNS_SERVER_BLOCK_LIST_URLS
+
+  forwarders:
+    addresses: []   # DNS_SERVER_FORWARDERS
+    protocol: Udp   # DNS_SERVER_FORWARDER_PROTOCOL: Udp | Tcp | Tls | Https | HttpsJson
+
+  logging:
+    useLocalTime: false   # DNS_SERVER_LOG_USING_LOCAL_TIME
+    folderPath: ""        # DNS_SERVER_LOG_FOLDER_PATH (empty = Technitium default)
+    maxLogFileDays: 0     # DNS_SERVER_LOG_MAX_LOG_FILE_DAYS (0 = Technitium default; use env[] to force 0)
+
+  stats:
+    enableInMemoryStats: false  # DNS_SERVER_STATS_ENABLE_IN_MEMORY_STATS
+    maxStatFileDays: 0          # DNS_SERVER_STATS_MAX_STAT_FILE_DAYS (0 = Technitium default; use env[] to force 0)

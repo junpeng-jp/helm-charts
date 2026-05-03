@@ -1,5 +1,12 @@
+global:
+  imageRegistry: ""        # overrides image.registry
+  imagePullSecrets: []     # merged with image.pullSecrets
+  storageClass: ""         # overrides persistence.storageClass
+
 nameOverride: ""
 fullnameOverride: ""
+
+replicaCount: 1
 
 image:
   registry: ghcr.io
@@ -51,23 +58,37 @@ pod:
 
 networking:
   service:
-    type: ClusterIP
-    port: 5580
+    clusterIp:
+      enabled: true
+      ports:
+        ws:
+          port: 5580
+          protocol: TCP
+    loadBalancer:
+      enabled: false
+      ports:
+        ws:
+          port: 5580
+          protocol: TCP
 
-  ingress:
+ingress:
+  gateway:
     enabled: false
-    className: nginx
-    annotations: {}
-    host: matter.example.com
+    parentRefs:
+      - name: my-gateway
+        namespace: default
+    hostnames:
+      - matter.example.com
     tls:
       enabled: false
-      secretName: python-matter-server-tls
+      secretName: ""
 
-  traefikIngress:
+  traefik:
     enabled: false
     entryPoints:
       - websecure
-    host: matter.example.com
+    hostnames:
+      - matter.example.com
     middlewares: []
     tls:
       enabled: false

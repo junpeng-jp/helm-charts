@@ -18,15 +18,17 @@ These principles govern the chart design.
 
 Maintain this top-to-bottom ordering in `values.yaml` for consistency across charts:
 
-1. [`nameOverride`, `fullnameOverride`](#1-naming)
+0. [`global`](#0-global)
+1. [`nameOverride`, `fullnameOverride`, `replicaCount`](#1-naming)
 2. [`image`](#2-image-registry)
 3. [`serviceAccount`](#3-service-account)
 4. [`initContainers`, `env`, `secretVolumeMounts`, `extraVolumes`, `extraVolumeMounts`, `livenessProbe`, `readinessProbe`, `resources`](#4-initialization)
 5. [`podSecurityContext`, `containerSecurityContext`, `pod`](#5-security-context)
 6. [`networking`](#6-networking)
-7. [`persistence`](#7-storage)
-8. [`monitor`](#8-monitors)
-9. Chart-specific subsystems (e.g. `usbDevice`)
+7. [`ingress`](#7-ingress)
+8. [`persistence`](#8-storage)
+9. [`monitor`](#9-monitors)
+10. [Chart-specific subsystems](#10-chart-specific-subsystems)
 
 ---
 
@@ -70,16 +72,48 @@ Example skeleton:
 
 ---
 
+## 0. Global
+
+`global` mirrors the Bitnami convention for cluster-wide overrides. When set, these values take precedence over their chart-local counterparts and cascade into sub-charts.
+
+```yaml
+global:
+  imageRegistry: ""        # overrides image.registry for all images in the chart
+  imagePullSecrets: []     # list of pull-secret names; merged with image.pullSecrets
+  storageClass: ""         # overrides persistence.storageClass
+```
+
+When `global.imageRegistry` is non-empty it overrides `image.registry`. When `global.storageClass` is non-empty it overrides `persistence.storageClass`. `global.imagePullSecrets` is prepended to `image.pullSecrets` before rendering `imagePullSecrets` in the pod spec.
+
+Template rendering pattern in `_helpers.tpl`:
+
+```
+{{- define "<chart>.image" -}}
+{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
+{{- $repository := .Values.image.repository -}}
+{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
+{{- if .Values.image.digest }}
+{{- printf "%s/%s@%s" $registry $repository .Values.image.digest }}
+{{- else }}
+{{- printf "%s/%s:%s" $registry $repository $tag }}
+{{- end }}
+{{- end }}
+```
+
+---
+
 ## 1. Naming
 
-Every chart exposes these two fields at the top of `values.yaml`. They have no effect when empty.
+Every chart exposes these fields at the top of `values.yaml`.
 
 ```yaml
 nameOverride: ""       # replaces the chart-name portion of generated resource names
 fullnameOverride: ""   # replaces the entire generated name (release-name + chart-name)
+
+replicaCount: 1        # number of pod replicas; keep at 1 for StatefulSets unless shared storage supports it
 ```
 
-`_helpers.tpl` already handles both via the standard `<chart>.fullname` pattern. The fields exist in `values.yaml` solely to document that the knobs are available.
+`_helpers.tpl` already handles naming via the standard `<chart>.fullname` pattern. These fields exist in `values.yaml` solely to document that the knobs are available.
 
 ---
 
@@ -101,7 +135,7 @@ Template rendering pattern in `_helpers.tpl`:
 
 ```
 {{- define "<chart>.image" -}}
-{{- $registry := .Values.image.registry -}}
+{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
 {{- $repository := .Values.image.repository -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- if .Values.image.digest }}
@@ -286,6 +320,30 @@ podSecurityContext:
   runAsNonRoot: true          # default for all containers; overridable per container
 ```
 
+`sysctls` accepts a list of `name`/`value` pairs. Only *safe* sysctls (those in Kubernetes' allowlist) are permitted by default; unsafe sysctls require an explicit `allowedUnsafeSysctls` admission configuration on the node.
+
+```yaml
+# Increase the local port range — useful for apps that open many outbound connections
+podSecurityContext:
+  sysctls:
+    - name: net.ipv4.ip_local_port_range
+      value: "1024 65535"
+
+# Raise the socket receive/send buffer limits — useful for high-throughput UDP (e.g. DNS, game servers)
+podSecurityContext:
+  sysctls:
+    - name: net.core.rmem_max
+      value: "134217728"
+    - name: net.core.wmem_max
+      value: "134217728"
+
+# Enable TCP fast open for both client and server paths
+podSecurityContext:
+  sysctls:
+    - name: net.ipv4.tcp_fastopen
+      value: "3"
+```
+
 ### 5.2 Container Security Context
 
 `containerSecurityContext` controls what the **main container's process is allowed to do at the OS level** — Linux capabilities, privilege escalation, filesystem mutability, and privileged mode. These settings apply only to the main container and override any pod-level defaults.
@@ -335,24 +393,130 @@ pod:
 
 ## 6. Networking
 
-Use `networking` to expose the application. `networking.service` configures the Kubernetes Service; `networking.ingress` and `networking.traefikIngress` expose it externally. Enable at most one ingress mechanism per chart instance; enabling both is valid only when routing to different paths or entrypoints.
+`networking.service` configures the Kubernetes Service. The service type is expressed by choosing a named sub-key (`cluster-ip` or `load-balancer`) rather than a `type` string — only one may be enabled at a time, enforced by `values.schema.json`.
+
+`ports` is a **map** keyed by port name under whichever service type is active. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec — use this for ports that are off by default but meaningful to expose at the user's discretion.
+
+The port named `http` is the primary port. It is always present and is the target for `ingress.gateway` and `ingress.traefik` (section 7).
+
+Each chart's `values.schema.json` **must** enforce that exactly one service type is enabled at a time.
 
 ```yaml
 networking:
   service:
-    type: ClusterIP
-    port: 8080
+    clusterIp:
+      enabled: true
+      ports:
+        http:
+          port: 8080
+          protocol: TCP
+    loadBalancer:
+      enabled: false
+      ports:
+        http:
+          port: 8080
+          protocol: TCP
+```
 
-  ingress:
+`service.yaml` inspects which sub-key has `enabled: true` and renders the Service with the matching `type`. Template rendering pattern:
+
+```
+{{- /* service.yaml */ -}}
+{{- $svcType := "" -}}
+{{- $ports := dict -}}
+{{- if .Values.networking.service.clusterIp.enabled -}}
+{{-   $svcType = "ClusterIP" -}}
+{{-   $ports = .Values.networking.service.clusterIp.ports -}}
+{{- else if .Values.networking.service.loadBalancer.enabled -}}
+{{-   $svcType = "LoadBalancer" -}}
+{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
+{{- end }}
+spec:
+  type: {{ $svcType }}
+  ports:
+    {{- range $name, $port := $ports }}
+    {{- if ne (toString $port.enabled) "false" }}
+    - name: {{ $name }}
+      port: {{ $port.port }}
+      targetPort: {{ $name }}
+      protocol: {{ $port.protocol }}
+    {{- end }}
+    {{- end }}
+```
+
+Apply the same range pattern in the workload template to keep container port names in sync with the Service. Iterate over whichever service type is enabled using the same `$ports` resolution above:
+
+```
+{{- /* statefulset.yaml / deployment.yaml */ -}}
+ports:
+  {{- range $name, $port := $ports }}
+  {{- if ne (toString $port.enabled) "false" }}
+  - name: {{ $name }}
+    containerPort: {{ $port.port }}
+    protocol: {{ $port.protocol }}
+  {{- end }}
+  {{- end }}
+```
+
+### 6.1 Multi-protocol ports
+
+Some applications expose the same logical service over multiple transport protocols (e.g., a DNS server listening on both UDP and TCP on port 53). Model each physical port as a separate map entry, and group them with a shared comment:
+
+```yaml
+networking:
+  service:
+    clusterIp:
+      enabled: false
+      ports:
+        http:
+          port: 5380
+          protocol: TCP
+    loadBalancer:
+      enabled: true
+      ports:
+        http:
+          port: 5380
+          protocol: TCP
+        # DNS — UDP and TCP share the same port number; enable both together
+        dns-udp:
+          port: 53
+          protocol: UDP
+          enabled: false
+        dns-tcp:
+          port: 53
+          protocol: TCP
+          enabled: false
+        # DNS over TLS
+        dot:
+          port: 853
+          protocol: TCP
+          enabled: false
+```
+
+Kubernetes permits two Service port entries with the same `port` number when their `protocol` values differ.
+
+---
+
+## 7. Ingress
+
+`ingress` configures how the application is exposed outside the cluster. It is intentionally separate from `networking` (which configures the Kubernetes Service) to keep transport-layer and HTTP-routing concerns distinct.
+
+Multiple ingress mechanisms may be defined in a chart, but each chart's `values.schema.json` **must** enforce that at most one is enabled at a time using a JSON Schema constraint (e.g. `not` with `required`, or a `oneOf` over enabled combinations). Enabling more than one simultaneously is unsupported unless the chart explicitly documents distinct paths or entrypoints for each.
+
+```yaml
+ingress:
+  gateway:
     enabled: false
-    className: nginx
-    annotations: {}
-    host: app.example.com
+    parentRefs:                  # references to Gateway resources that should serve this route
+      - name: my-gateway
+        namespace: default       # omit if Gateway is in the same namespace as the chart
+    hostnames:                   # list of hostnames this route matches (Gateway API HTTPRoute spec)
+      - app.example.com
     tls:
       enabled: false
-      secretName: app-tls
+      secretName: app-tls        # reference a pre-existing TLS Secret; omit to use the Gateway's listener TLS
 
-  traefikIngress:
+  traefik:
     enabled: false
     entryPoints:
       - websecure
@@ -364,49 +528,13 @@ networking:
       certResolver: ""      # use a Traefik cert resolver (e.g. letsencrypt); ignored when secretName is set
 ```
 
-Templates: `service.yaml` renders the Service; `ingress.yaml` renders the `networking.k8s.io/v1` Ingress; `ingressroute.yaml` renders the `traefik.io/v1alpha1` IngressRoute.
+Templates: `httproute.yaml` renders the `gateway.networking.k8s.io/v1` HTTPRoute from `ingress.gateway`; `ingressroute.yaml` renders the `traefik.io/v1alpha1` IngressRoute from `ingress.traefik`. Both route to the `http` port of the chart's Service by name.
 
-### 6.1 Multi-port services
-
-`networking.service.port` is always the primary HTTP port — the one that ingress and ingressroute route to. It is named `http` in both the Service and the container spec so that ingress backends can reference it by name.
-
-When the app exposes additional protocol ports (e.g., a DNS server with UDP/TCP/DoT/DoH), place those ports in a chart-specific values block (section 9) rather than inside `networking`. The service template then renders the primary `http` port from `networking.service.port` followed by the chart-specific ports:
-
-```yaml
-# values.yaml — chart-specific section (section 9)
-dnsPorts:
-  dns: 53       # DNS over UDP and TCP
-  dot: 853      # DNS over TLS
-  doh: 8053     # DNS over HTTPS (plain HTTP upstream)
-  https: 53443  # DNS over HTTPS (TLS)
-```
-
-```yaml
-# service.yaml
-ports:
-  - name: http
-    port: {{ .Values.networking.service.port }}
-    targetPort: http
-    protocol: TCP
-  - name: dns-udp
-    port: {{ .Values.dnsPorts.dns }}
-    targetPort: dns-udp
-    protocol: UDP
-  - name: dns-tcp
-    port: {{ .Values.dnsPorts.dns }}
-    targetPort: dns-tcp
-    protocol: TCP
-  - name: dns-dot
-    port: {{ .Values.dnsPorts.dot }}
-    targetPort: dns-dot
-    protocol: TCP
-```
-
-Mirror the same named ports in the workload's `containers[].ports` so that `targetPort` resolution works correctly. Kubernetes allows two entries with the same port number when they differ by protocol (e.g., `dns-udp` and `dns-tcp` both on port 53).
+> **Deprecated:** The `networking.k8s.io/v1` Ingress resource (previously `ingress.kubernetes`) is no longer supported. Use `ingress.gateway` for standard Kubernetes Gateway API routing.
 
 ---
 
-## 7. Storage
+## 8. Storage
 
 Use the Bitnami-style schema with `enabled` flag and `accessModes` as a list.
 
@@ -426,7 +554,7 @@ When `existingClaim` is non-empty, the chart skips the `volumeClaimTemplates` en
 
 ---
 
-## 8. Monitors
+## 9. Monitors
 
 `monitor.metric` creates a Prometheus `ServiceMonitor` targeting the chart's Service. Disabled by default; enable only when the app exposes a Prometheus-compatible scrape endpoint. `labels` must match the target Prometheus instance's `serviceMonitorSelector`.
 
@@ -443,24 +571,38 @@ monitor:
 
 ---
 
-## 9. Chart-specific subsystems
+## 10. Chart-specific subsystems
 
-Anything that doesn't fit the standard sections goes here, after `monitor`, with a comment explaining the purpose. Each subsystem has its own top-level key.
+Anything that doesn't fit the standard sections goes here, after `monitor`. Each subsystem gets its own top-level key with a comment explaining its purpose.
 
-Common patterns:
+### Naming conventions
 
-**Protocol ports** — when a service exposes multiple non-HTTP ports (DNS, MQTT, etc.), collect them under a named key so users can remap them without touching the primary networking block:
+- **Application config** — settings that map directly to the application's own configuration (env vars, config files, etc.) go under a key named after the application in camelCase (e.g. `technitium`, `homeAssistant`). This makes clear that the block belongs to the app, not the chart harness.
+- **Infrastructure concerns** — hardware passthrough, host-level integration, and other ops-focused knobs go under a descriptive noun key (e.g. `usbDevice`, `hostPorts`).
+
+### Rules
+
+- Include an `enabled` flag for any subsystem that is optional.
+- Add a comment block above the key explaining when and why a user would configure it.
+- Register every chart-specific key in `values.schema.json` with `additionalProperties: false`.
+
+### Examples
+
+**Application config** — structured settings rendered as container env vars or config files:
 
 ```yaml
-# DNS protocol ports — Technitium-specific.
-dnsPorts:
-  dns: 53         # DNS over UDP and TCP
-  dot: 853        # DNS over TLS
-  doh: 8053       # DNS over HTTPS (plain HTTP upstream)
-  https: 53443    # DNS over HTTPS (TLS)
+# Technitium DNS server configuration.
+# Use env[] for any setting not modelled here.
+technitium:
+  domain: dns-server
+  recursion:
+    mode: AllowOnlyForPrivateNetworks
+  forwarders:
+    addresses: []
+    protocol: Udp
 ```
 
-**Device passthrough** — for hardware devices mounted from the host:
+**Device passthrough** — host hardware exposed into the container:
 
 ```yaml
 # USB serial device passthrough.
@@ -470,5 +612,3 @@ usbDevice:
   hostPath: /dev/serial/by-id/usb-...
   mountPath: /dev/ttyUSB0
 ```
-
-Add a `values.schema.json` entry for every chart-specific key using `additionalProperties: false` to keep the schema strict.

@@ -1,5 +1,12 @@
+global:
+  imageRegistry: ""        # overrides image.registry
+  imagePullSecrets: []     # merged with image.pullSecrets
+  storageClass: ""         # overrides persistence.storageClass
+
 nameOverride: ""
 fullnameOverride: ""
+
+replicaCount: 1
 
 image:
   registry: ghcr.io
@@ -68,22 +75,37 @@ pod:
 
 networking:
   service:
-    type: ClusterIP
-    port: 8123
+    clusterIp:
+      enabled: true
+      ports:
+        http:
+          port: 8123
+          protocol: TCP
+    loadBalancer:
+      enabled: false
+      ports:
+        http:
+          port: 8123
+          protocol: TCP
 
-  ingress:
+ingress:
+  gateway:
     enabled: false
-    className: nginx
-    annotations: {}
-    host: ha.example.com
+    parentRefs:
+      - name: my-gateway
+        namespace: default
+    hostnames:
+      - ha.example.com
     tls:
       enabled: false
-      secretName: home-assistant-tls
-  traefikIngress:
+      secretName: ""
+
+  traefik:
     enabled: false
     entryPoints:
       - websecure
-    host: ha.example.com
+    hostnames:
+      - ha.example.com
     middlewares: []
     tls:
       enabled: false

@@ -1,3 +1,12 @@
+{{- $svcType := "" -}}
+{{- $ports := dict -}}
+{{- if .Values.networking.service.clusterIp.enabled -}}
+{{-   $svcType = "ClusterIP" -}}
+{{-   $ports = .Values.networking.service.clusterIp.ports -}}
+{{- else if .Values.networking.service.loadBalancer.enabled -}}
+{{-   $svcType = "LoadBalancer" -}}
+{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -6,7 +15,7 @@ metadata:
     {{- include "technitium.labels" . | nindent 4 }}
 spec:
   serviceName: {{ include "technitium.fullname" . }}
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "technitium.selectorLabels" . | nindent 6 }}
@@ -20,9 +29,12 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "technitium.serviceAccountName" . }}
-      {{- with .Values.image.pullSecrets }}
+      {{- $pullSecrets := concat .Values.global.imagePullSecrets .Values.image.pullSecrets }}
+      {{- if $pullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- range $pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
       {{- end }}
       {{- with .Values.podSecurityContext }}
       securityContext:
@@ -37,28 +49,18 @@ spec:
           image: {{ include "technitium.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - name: http
-              containerPort: {{ .Values.networking.service.port }}
-              protocol: TCP
-            - name: dns-udp
-              containerPort: {{ .Values.dnsPorts.dns }}
-              protocol: UDP
-            - name: dns-tcp
-              containerPort: {{ .Values.dnsPorts.dns }}
-              protocol: TCP
-            - name: dns-dot
-              containerPort: {{ .Values.dnsPorts.dot }}
-              protocol: TCP
-            - name: dns-doh
-              containerPort: {{ .Values.dnsPorts.doh }}
-              protocol: TCP
-            - name: dns-https
-              containerPort: {{ .Values.dnsPorts.https }}
-              protocol: TCP
-          {{- with .Values.env }}
+            {{- range $name, $port := $ports }}
+            {{- if ne (toString $port.enabled) "false" }}
+            - name: {{ $name }}
+              containerPort: {{ $port.port }}
+              protocol: {{ $port.protocol }}
+            {{- end }}
+            {{- end }}
           env:
+            {{- include "technitium.configEnv" . | nindent 12 }}
+            {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           {{- with .Values.containerSecurityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -132,8 +134,9 @@ spec:
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}
-        {{- if .Values.persistence.storageClass }}
-        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- $storageClass := .Values.global.storageClass | default .Values.persistence.storageClass }}
+        {{- if $storageClass }}
+        storageClassName: {{ $storageClass }}
         {{- end }}
         resources:
           requests:

@@ -1,3 +1,12 @@
+{{- $svcType := "" -}}
+{{- $ports := dict -}}
+{{- if .Values.networking.service.clusterIp.enabled -}}
+{{-   $svcType = "ClusterIP" -}}
+{{-   $ports = .Values.networking.service.clusterIp.ports -}}
+{{- else if .Values.networking.service.loadBalancer.enabled -}}
+{{-   $svcType = "LoadBalancer" -}}
+{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -6,7 +15,7 @@ metadata:
     {{- include "home-assistant.labels" . | nindent 4 }}
 spec:
   serviceName: {{ include "home-assistant.fullname" . }}
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "home-assistant.selectorLabels" . | nindent 6 }}
@@ -24,9 +33,12 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
       serviceAccountName: {{ include "home-assistant.serviceAccountName" . }}
-      {{- with .Values.image.pullSecrets }}
+      {{- $pullSecrets := concat .Values.global.imagePullSecrets .Values.image.pullSecrets }}
+      {{- if $pullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- range $pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
       {{- end }}
       {{- with .Values.podSecurityContext }}
       securityContext:
@@ -41,9 +53,13 @@ spec:
           image: {{ include "home-assistant.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - name: http
-              containerPort: 8123
-              protocol: TCP
+            {{- range $name, $port := $ports }}
+            {{- if ne (toString $port.enabled) "false" }}
+            - name: {{ $name }}
+              containerPort: {{ $port.port }}
+              protocol: {{ $port.protocol }}
+            {{- end }}
+            {{- end }}
           {{- with .Values.env }}
           env:
             {{- toYaml . | nindent 12 }}
@@ -130,8 +146,9 @@ spec:
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}
-        {{- if .Values.persistence.storageClass }}
-        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- $storageClass := .Values.global.storageClass | default .Values.persistence.storageClass }}
+        {{- if $storageClass }}
+        storageClassName: {{ $storageClass }}
         {{- end }}
         resources:
           requests:

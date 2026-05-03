@@ -38,7 +38,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "home-assistant.image" -}}
-{{- $registry := .Values.image.registry -}}
+{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
 {{- $repository := .Values.image.repository -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- if .Values.image.digest }}

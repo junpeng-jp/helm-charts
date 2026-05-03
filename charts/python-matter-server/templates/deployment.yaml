@@ -1,3 +1,12 @@
+{{- $svcType := "" -}}
+{{- $ports := dict -}}
+{{- if .Values.networking.service.clusterIp.enabled -}}
+{{-   $svcType = "ClusterIP" -}}
+{{-   $ports = .Values.networking.service.clusterIp.ports -}}
+{{- else if .Values.networking.service.loadBalancer.enabled -}}
+{{-   $svcType = "LoadBalancer" -}}
+{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,7 +14,7 @@ metadata:
   labels:
     {{- include "python-matter-server.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "python-matter-server.selectorLabels" . | nindent 6 }}
@@ -23,9 +32,12 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
       serviceAccountName: {{ include "python-matter-server.serviceAccountName" . }}
-      {{- with .Values.image.pullSecrets }}
+      {{- $pullSecrets := concat .Values.global.imagePullSecrets .Values.image.pullSecrets }}
+      {{- if $pullSecrets }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- range $pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
       {{- end }}
       {{- with .Values.podSecurityContext }}
       securityContext:
@@ -45,11 +57,15 @@ spec:
             - --paa-root-cert-dir
             - /data/paa-root-certs
             - --port
-            - {{ .Values.networking.service.port | quote }}
+            - {{ (index $ports "ws").port | quote }}
           ports:
-            - name: ws
-              containerPort: {{ .Values.networking.service.port }}
-              protocol: TCP
+            {{- range $name, $port := $ports }}
+            {{- if ne (toString $port.enabled) "false" }}
+            - name: {{ $name }}
+              containerPort: {{ $port.port }}
+              protocol: {{ $port.protocol }}
+            {{- end }}
+            {{- end }}
           {{- with .Values.env }}
           env:
             {{- toYaml . | nindent 12 }}

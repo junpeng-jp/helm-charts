@@ -1,3 +1,12 @@
+{{- $svcType := "" -}}
+{{- $ports := dict -}}
+{{- if .Values.networking.service.clusterIp.enabled -}}
+{{-   $svcType = "ClusterIP" -}}
+{{-   $ports = .Values.networking.service.clusterIp.ports -}}
+{{- else if .Values.networking.service.loadBalancer.enabled -}}
+{{-   $svcType = "LoadBalancer" -}}
+{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
+{{- end -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -5,31 +14,15 @@ metadata:
   labels:
     {{- include "technitium.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.networking.service.type }}
+  type: {{ $svcType }}
   selector:
     {{- include "technitium.selectorLabels" . | nindent 4 }}
   ports:
-    - name: http
-      port: {{ .Values.networking.service.port }}
-      targetPort: http
-      protocol: TCP
-    - name: dns-udp
-      port: {{ .Values.dnsPorts.dns }}
-      targetPort: dns-udp
-      protocol: UDP
-    - name: dns-tcp
-      port: {{ .Values.dnsPorts.dns }}
-      targetPort: dns-tcp
-      protocol: TCP
-    - name: dns-dot
-      port: {{ .Values.dnsPorts.dot }}
-      targetPort: dns-dot
-      protocol: TCP
-    - name: dns-doh
-      port: {{ .Values.dnsPorts.doh }}
-      targetPort: dns-doh
-      protocol: TCP
-    - name: dns-https
-      port: {{ .Values.dnsPorts.https }}
-      targetPort: dns-https
-      protocol: TCP
+    {{- range $name, $port := $ports }}
+    {{- if ne (toString $port.enabled) "false" }}
+    - name: {{ $name }}
+      port: {{ $port.port }}
+      targetPort: {{ $name }}
+      protocol: {{ $port.protocol }}
+    {{- end }}
+    {{- end }}

@@ -4,3 +4,9 @@ description: Technitium DNS server with web dashboard
 type: application
 version: 0.1.0
 appVersion: "14.3.0"
+keywords:
+  - dns
+  - technitium
+maintainers:
+  - name: junpeng-jp
+    url: https://github.com/junpeng-jp
