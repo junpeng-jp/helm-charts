@@ -4,17 +4,17 @@ templates:
 tests:
   - it: does not render when traefikIngress is disabled
     set:
-      networking.traefikIngress.enabled: false
+      ingress.traefik.enabled: false
     asserts:
       - hasDocuments:
           count: 0
 
   - it: renders with host, entryPoints, and TLS certResolver when enabled
     set:
-      networking.traefikIngress.enabled: true
-      networking.traefikIngress.host: dns.example.com
-      networking.traefikIngress.tls.enabled: true
-      networking.traefikIngress.tls.certResolver: letsencrypt
+      ingress.traefik.enabled: true
+      ingress.traefik.hostnames[0]: dns.example.com
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.certResolver: letsencrypt
     asserts:
       - isKind:
           of: IngressRoute
