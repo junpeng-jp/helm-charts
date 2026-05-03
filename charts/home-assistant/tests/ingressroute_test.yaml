@@ -1,0 +1,51 @@
+suite: IngressRoute (Traefik)
+templates:
+  - templates/ingressroute.yaml
+tests:
+  - it: does not render when traefikIngress is disabled
+    set:
+      networking.traefikIngress.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders with host rule, entryPoints, certResolver TLS, and middlewares
+    set:
+      networking.traefikIngress.enabled: true
+      networking.traefikIngress.entryPoints:
+        - websecure
+      networking.traefikIngress.tls.enabled: true
+      networking.traefikIngress.tls.certResolver: letsencrypt
+      networking.traefikIngress.middlewares:
+        - ha-auth
+    asserts:
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: spec.routes[0].match
+          value: "Host(`ha.example.com`)"
+      - equal:
+          path: spec.routes[0].services[0].port
+          value: http
+      - contains:
+          path: spec.entryPoints
+          content: websecure
+      - equal:
+          path: spec.tls.certResolver
+          value: letsencrypt
+      - contains:
+          path: spec.routes[0].middlewares
+          content:
+            name: ha-auth
+
+  - it: uses secretName instead of certResolver when set
+    set:
+      networking.traefikIngress.enabled: true
+      networking.traefikIngress.tls.enabled: true
+      networking.traefikIngress.tls.secretName: ha-tls
+    asserts:
+      - equal:
+          path: spec.tls.secretName
+          value: ha-tls
+      - notExists:
+          path: spec.tls.certResolver

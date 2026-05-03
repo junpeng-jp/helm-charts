@@ -1,0 +1,4 @@
+initContainers:
+  - name: wait-for-mqtt
+    image: busybox:latest
+    command: ["sh", "-c", "until nc -z mqtt 1883; do sleep 2; done"]

@@ -1,0 +1,119 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ghcr.io
+  repository: home-assistant/home-assistant
+  tag: ""           # defaults to Chart.AppVersion
+  digest: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+
+initContainers: []
+
+env:
+  - name: TZ
+    value: UTC
+
+secretVolumeMounts: []
+
+extraVolumes: []
+extraVolumeMounts: []
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  failureThreshold: 5
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    # CPU limit intentionally omitted — automation runs can spike CPU briefly.
+
+# Add supplementalGroups: [20] (dialout GID) for serial device access without privileged mode.
+# Verify the host GID with: stat /dev/serial/by-id/<your-device>
+podSecurityContext: {}
+
+containerSecurityContext: {}
+
+pod:
+  annotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  # hostNetwork is required on k3s (Flannel VXLAN drops mDNS/multicast).
+  # Without it, HomeKit, Chromecast, and Matter/Thread discovery will not work.
+  # dnsPolicy is automatically set to ClusterFirstWithHostNet when hostNetwork is true.
+  hostNetwork: true
+
+networking:
+  service:
+    type: ClusterIP
+    port: 8123
+
+  ingress:
+    enabled: false
+    className: nginx
+    annotations: {}
+    host: ha.example.com
+    tls:
+      enabled: false
+      secretName: home-assistant-tls
+  traefikIngress:
+    enabled: false
+    entryPoints:
+      - websecure
+    host: ha.example.com
+    middlewares: []
+    tls:
+      enabled: false
+      secretName: ""
+      certResolver: ""
+
+persistence:
+  enabled: true
+  storageClass: ""  # "" uses cluster default (local-path on k3s)
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+  annotations: {}
+  labels: {}
+  existingClaim: ""
+
+# Prometheus ServiceMonitor — requires the Prometheus integration enabled inside HA.
+monitor:
+  metric:
+    enabled: false
+    path: /api/prometheus
+    port: http
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+
+# USB serial device passthrough.
+# Use this only when running Zigbee directly in HA (not recommended — prefer Zigbee2MQTT).
+# Always reference the stable by-id path, never /dev/ttyUSB0.
+usbDevice:
+  enabled: false
+  hostPath: /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_XXXX-if00-port0
+  mountPath: /dev/ttyUSB0

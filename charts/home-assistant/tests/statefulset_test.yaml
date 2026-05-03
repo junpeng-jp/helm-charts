@@ -1,0 +1,102 @@
+suite: StatefulSet
+templates:
+  - templates/statefulset.yaml
+tests:
+  - it: renders a StatefulSet with realistic defaults
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/home-assistant/home-assistant:2025.5.3
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: true
+      - equal:
+          path: spec.template.spec.dnsPolicy
+          value: ClusterFirstWithHostNet
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.name
+          value: config
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /
+
+  - it: uses digest over tag when both are set
+    set:
+      image.tag: "2025.1.0"
+      image.digest: "sha256:abc123"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/home-assistant/home-assistant@sha256:abc123
+
+  - it: mounts existing PVC as volume instead of creating a VolumeClaimTemplate
+    set:
+      persistence.existingClaim: my-existing-pvc
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: config
+            persistentVolumeClaim:
+              claimName: my-existing-pvc
+
+  - it: sets storageClassName in VolumeClaimTemplate when specified
+    set:
+      persistence.storageClass: local-path
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: local-path
+
+  - it: adds USB device volume and mount when enabled
+    set:
+      usbDevice.enabled: true
+      usbDevice.hostPath: /dev/serial/by-id/usb-test-device
+      usbDevice.mountPath: /dev/ttyUSB0
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: usb-device
+            hostPath:
+              path: /dev/serial/by-id/usb-test-device
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: usb-device
+            mountPath: /dev/ttyUSB0
+
+  - it: applies containerSecurityContext and podSecurityContext
+    set:
+      containerSecurityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+      podSecurityContext:
+        supplementalGroups: [20]
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.supplementalGroups[0]
+          value: 20
+
+  - it: renders initContainers from fixture
+    values:
+      - fixtures/init-containers.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-mqtt
+
+  - it: uses fullnameOverride as complete resource name
+    set:
+      fullnameOverride: my-ha
+    asserts:
+      - equal:
+          path: metadata.name
+          value: my-ha
