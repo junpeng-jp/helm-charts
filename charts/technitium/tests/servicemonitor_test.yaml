@@ -1,0 +1,28 @@
+suite: ServiceMonitor
+templates:
+  - templates/servicemonitor.yaml
+tests:
+  - it: does not render when monitor is disabled
+    set:
+      monitor.metric.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders with scrape config when enabled
+    set:
+      monitor.metric.enabled: true
+      monitor.metric.labels:
+        release: prometheus
+    asserts:
+      - isKind:
+          of: ServiceMonitor
+      - equal:
+          path: spec.endpoints[0].path
+          value: /metrics
+      - equal:
+          path: spec.endpoints[0].port
+          value: http
+      - equal:
+          path: metadata.labels.release
+          value: prometheus

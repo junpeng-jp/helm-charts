@@ -1,0 +1,37 @@
+suite: Ingress (nginx)
+templates:
+  - templates/ingress.yaml
+tests:
+  - it: does not render when ingress is disabled
+    set:
+      networking.ingress.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders with host routing, TLS, and annotations when enabled
+    set:
+      networking.ingress.enabled: true
+      networking.ingress.host: dns.example.com
+      networking.ingress.tls.enabled: true
+      networking.ingress.tls.secretName: technitium-tls
+      networking.ingress.annotations:
+        nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    asserts:
+      - isKind:
+          of: Ingress
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+      - equal:
+          path: spec.rules[0].host
+          value: dns.example.com
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.name
+          value: http
+      - equal:
+          path: spec.tls[0].secretName
+          value: technitium-tls
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"]
+          value: "3600"

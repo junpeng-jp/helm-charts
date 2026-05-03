@@ -1,0 +1,20 @@
+{{- if .Values.monitor.metric.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "technitium.fullname" . }}
+  labels:
+    {{- include "technitium.labels" . | nindent 4 }}
+    {{- with .Values.monitor.metric.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "technitium.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: {{ .Values.monitor.metric.port }}
+      path: {{ .Values.monitor.metric.path }}
+      interval: {{ .Values.monitor.metric.interval }}
+      scrapeTimeout: {{ .Values.monitor.metric.scrapeTimeout }}
+{{- end }}

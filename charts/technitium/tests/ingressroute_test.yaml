@@ -1,0 +1,29 @@
+suite: IngressRoute (Traefik)
+templates:
+  - templates/ingressroute.yaml
+tests:
+  - it: does not render when traefikIngress is disabled
+    set:
+      networking.traefikIngress.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders with host, entryPoints, and TLS certResolver when enabled
+    set:
+      networking.traefikIngress.enabled: true
+      networking.traefikIngress.host: dns.example.com
+      networking.traefikIngress.tls.enabled: true
+      networking.traefikIngress.tls.certResolver: letsencrypt
+    asserts:
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: spec.routes[0].match
+          value: "Host(`dns.example.com`)"
+      - equal:
+          path: spec.routes[0].services[0].port
+          value: http
+      - equal:
+          path: spec.tls.certResolver
+          value: letsencrypt

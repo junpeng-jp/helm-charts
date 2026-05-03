@@ -1,0 +1,71 @@
+suite: StatefulSet
+templates:
+  - templates/statefulset.yaml
+tests:
+  - it: renders a StatefulSet with realistic defaults
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/technitium/dns-server:14.3.0
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.name
+          value: config
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].name
+          value: http
+
+  - it: uses digest over tag when both are set
+    set:
+      image.tag: "14.0.0"
+      image.digest: "sha256:abc123"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/technitium/dns-server@sha256:abc123
+
+  - it: mounts existing PVC as volume instead of creating a VolumeClaimTemplate
+    set:
+      persistence.existingClaim: my-existing-pvc
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: config
+            persistentVolumeClaim:
+              claimName: my-existing-pvc
+
+  - it: sets storageClassName in VolumeClaimTemplate when specified
+    set:
+      persistence.storageClass: local-path
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: local-path
+
+  - it: omits liveness and readiness probes when disabled
+    set:
+      livenessProbe.enabled: false
+      readinessProbe.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe
+
+  - it: uses fullnameOverride as complete resource name
+    set:
+      fullnameOverride: my-dns
+    asserts:
+      - equal:
+          path: metadata.name
+          value: my-dns
