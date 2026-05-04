@@ -85,20 +85,25 @@ jobs:
 
   integration-test:
     needs: [detect-chart-changes, lint, unit-test]
+    # needs docker daemon for kind so skip using the CI image
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/junpeng-jp/helm:1.0.2
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Add github workspace as safe.directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Set up Helm
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.19.1"
+
+      - name: Set up chart-testing
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        uses: helm/chart-testing-action@v2
+        with:
+          version: "3.14.0"
 
       - name: Create kind cluster
         if: needs.detect-chart-changes.outputs.changed == 'true'
