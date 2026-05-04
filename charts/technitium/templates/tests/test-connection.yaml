@@ -1,4 +1,9 @@
-{{- if .Values.networking.webPortal.enabled }}
+{{- $port := 0 -}}
+{{- if .Values.networking.service.clusterIp.enabled -}}
+{{-   $port = .Values.networking.service.clusterIp.ports.http.port -}}
+{{- else if .Values.networking.service.loadBalancer.enabled -}}
+{{-   $port = .Values.networking.service.loadBalancer.ports.http.port -}}
+{{- end -}}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -16,5 +21,4 @@ spec:
         - wget
         - --spider
         - -q
-        - http://{{ include "technitium.fullname" . }}:{{ .Values.networking.webPortal.port }}/
-{{- end }}
+        - http://{{ include "technitium.fullname" . }}:{{ $port }}/

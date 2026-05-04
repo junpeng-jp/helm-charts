@@ -1,0 +1,14 @@
+image:
+  tag: "14.3.0"
+
+networking:
+  service:
+    clusterIp:
+      enabled: true
+    loadBalancer:
+      enabled: false
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 1Gi
