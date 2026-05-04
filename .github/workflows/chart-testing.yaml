@@ -111,6 +111,10 @@ jobs:
         with:
           config: config/kind-config.yaml
 
+      - name: Install local-path-provisioner
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        run: kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
+
       - name: Run chart-testing (install)
         if: needs.detect-chart-changes.outputs.changed == 'true'
         run: ct install --config config/ct.yaml --target-branch ${{ github.event.repository.default_branch }}
