@@ -9,7 +9,7 @@ jobs:
   lint-and-unit-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/junpeng-jp/helm:1.0.0
+      image: ghcr.io/junpeng-jp/helm:1.0.1
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
