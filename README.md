@@ -14,4 +14,4 @@ The charts are designed to have standadized value groups so that it can be used 
 
 All charts have some basic level of unit testing and integration testing.
 
-See [`unit-testing.md](./docs/unit-testing.md) and [`chart-testing.md`](./docs/chart-testing.md) for more details.
+See [`unit-testing.md`](./docs/unit-testing.md) and [`chart-testing.md`](./docs/chart-testing.md) for more details.
