@@ -1,37 +1,27 @@
-suite: Ingress (nginx)
+suite: HTTPRoute (Gateway API)
 templates:
-  - templates/ingress.yaml
+  - templates/httproute.yaml
 tests:
-  - it: does not render when ingress is disabled
+  - it: does not render when gateway ingress is disabled
     set:
-      networking.ingress.enabled: false
+      ingress.gateway.enabled: false
     asserts:
       - hasDocuments:
           count: 0
 
-  - it: renders with host routing, TLS, and annotations when enabled
+  - it: renders HTTPRoute with hostname and parentRef when enabled
     set:
-      networking.ingress.enabled: true
-      networking.ingress.host: ha.example.com
-      networking.ingress.tls.enabled: true
-      networking.ingress.tls.secretName: ha-tls
-      networking.ingress.annotations:
-        nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      ingress.gateway.enabled: true
+      ingress.gateway.hostnames[0]: ha.example.com
     asserts:
       - isKind:
-          of: Ingress
+          of: HTTPRoute
       - equal:
-          path: spec.ingressClassName
-          value: nginx
-      - equal:
-          path: spec.rules[0].host
+          path: spec.hostnames[0]
           value: ha.example.com
       - equal:
-          path: spec.rules[0].http.paths[0].backend.service.port.name
+          path: spec.parentRefs[0].name
+          value: my-gateway
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
           value: http
-      - equal:
-          path: spec.tls[0].secretName
-          value: ha-tls
-      - equal:
-          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"]
-          value: "3600"

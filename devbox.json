@@ -10,7 +10,8 @@
   ],
   "shell": {
     "init_hook": [
-      "helm plugin list | grep -q '^diff' || helm plugin install https://github.com/databus23/helm-diff"
+      "helm plugin list | grep -q '^diff' || helm plugin install https://github.com/databus23/helm-diff",
+      "helm plugin list | grep -q '^unittest' || helm plugin install https://github.com/helm-unittest/helm-unittest.git"
     ],
     "scripts": {
       "kind:setup": "kind create cluster --config config/kind-config.yaml && kubectl cluster-info --context kind-helm-chart-test",

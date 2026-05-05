@@ -4,20 +4,18 @@ templates:
 tests:
   - it: does not render when traefikIngress is disabled
     set:
-      networking.traefikIngress.enabled: false
+      ingress.traefik.enabled: false
     asserts:
       - hasDocuments:
           count: 0
 
   - it: renders with host rule, entryPoints, certResolver TLS, and middlewares
     set:
-      networking.traefikIngress.enabled: true
-      networking.traefikIngress.entryPoints:
-        - websecure
-      networking.traefikIngress.tls.enabled: true
-      networking.traefikIngress.tls.certResolver: letsencrypt
-      networking.traefikIngress.middlewares:
-        - ha-auth
+      ingress.traefik.enabled: true
+      ingress.traefik.entryPoints[0]: websecure
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.certResolver: letsencrypt
+      ingress.traefik.middlewares[0]: ha-auth
     asserts:
       - isKind:
           of: IngressRoute
@@ -40,9 +38,9 @@ tests:
 
   - it: uses secretName instead of certResolver when set
     set:
-      networking.traefikIngress.enabled: true
-      networking.traefikIngress.tls.enabled: true
-      networking.traefikIngress.tls.secretName: ha-tls
+      ingress.traefik.enabled: true
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.secretName: ha-tls
     asserts:
       - equal:
           path: spec.tls.secretName

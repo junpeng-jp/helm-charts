@@ -193,12 +193,12 @@ config:
 
   recursion:
     mode: AllowOnlyForPrivateNetworks   # DNS_SERVER_RECURSION: Allow | Deny | AllowOnlyForPrivateNetworks | UseSpecifiedNetworkACL
-    networkACL: ""                       # DNS_SERVER_RECURSION_NETWORK_ACL (UseSpecifiedNetworkACL only)
+    networkACL: ""                      # DNS_SERVER_RECURSION_NETWORK_ACL (UseSpecifiedNetworkACL only)
 
   blocking:
-    enabled: false        # DNS_SERVER_ENABLE_BLOCKING
-    allowTxtReport: false # DNS_SERVER_ALLOW_TXT_BLOCKING_REPORT
-    blockListUrls: []     # DNS_SERVER_BLOCK_LIST_URLS
+    enabled: false          # DNS_SERVER_ENABLE_BLOCKING
+    allowTxtReport: false   # DNS_SERVER_ALLOW_TXT_BLOCKING_REPORT
+    blockListUrls: []       # DNS_SERVER_BLOCK_LIST_URLS
 
   forwarders:
     addresses: []   # DNS_SERVER_FORWARDERS

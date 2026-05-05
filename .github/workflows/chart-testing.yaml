@@ -6,41 +6,75 @@ on:
       - main
 
 jobs:
-  test:
+  detect-chart-changes:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/junpeng-jp/helm:1.0.2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      changed: ${{ steps.detect-chart-changes.outputs.changed }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4# Install helm-unittest plugin
-
-      - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
-
-      - name: Set up chart-testing
-        uses: helm/chart-testing-action@v3.14.0
+      - name: Add github workspace as safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Detect chart changes
         id: detect-chart-changes
         run: |
-          changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
+          changed=$(ct list-changed --config config/ct.yaml --target-branch ${{ github.event.repository.default_branch }})
           if [[ -n "$changed" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "Changed charts: $changed"
           fi
 
+  lint:
+    needs: detect-chart-changes
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/junpeng-jp/helm:1.0.2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add github workspace as safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Run chart-testing (lint)
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        run: ct lint --config config/ct.yaml --target-branch ${{ github.event.repository.default_branch }}
+
+  unit-test:
+    needs: detect-chart-changes
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/junpeng-jp/helm:1.0.2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add github workspace as safe.directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Run helm-unittest
-        if: steps.detect-chart-changes.outputs.changed == 'true'
+        if: needs.detect-chart-changes.outputs.changed == 'true'
         run: |
-          for chart in $(ct list-changed --target-branch ${{ github.event.repository.default_branch }}); do
-            # Only run if a tests directory exists to avoid errors
+          for chart in $(ct list-changed --config config/ct.yaml --target-branch ${{ github.event.repository.default_branch }}); do
             if [ -d "$chart/tests" ]; then
               echo "Running unit tests for $chart..."
               helm unittest "$chart"
@@ -49,16 +83,38 @@ jobs:
             fi
           done
 
-      - name: Run chart-testing (lint)
-        if: steps.detect-chart-changes.outputs.changed == 'true'
-        run: ct lint --config config/ct.yaml --target-branch ${{ github.event.repository.default_branch }}
+  integration-test:
+    needs: [detect-chart-changes, lint, unit-test]
+    # needs docker daemon for kind so skip using the CI image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.19.1"
+
+      - name: Set up chart-testing
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        uses: helm/chart-testing-action@v2
+        with:
+          version: "3.14.0"
 
       - name: Create kind cluster
-        if: steps.list-changed.outputs.changed == 'true'
+        if: needs.detect-chart-changes.outputs.changed == 'true'
         uses: helm/kind-action@v1
         with:
           config: config/kind-config.yaml
 
+      - name: Install local-path-provisioner
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        run: kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
+
       - name: Run chart-testing (install)
-        if: steps.detect-chart-changes.outputs.changed == 'true'
-        run: ct install --target-branch ${{ github.event.repository.default_branch }} --helm-extra-args "--timeout 10m"
+        if: needs.detect-chart-changes.outputs.changed == 'true'
+        run: ct install --config config/ct.yaml --target-branch ${{ github.event.repository.default_branch }}

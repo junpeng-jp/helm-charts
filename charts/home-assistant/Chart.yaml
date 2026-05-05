@@ -2,7 +2,7 @@ apiVersion: v2
 name: home-assistant
 description: Home Assistant automation platform
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "2025.5.3"
 keywords:
   - home-assistant

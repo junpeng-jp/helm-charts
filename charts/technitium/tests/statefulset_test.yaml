@@ -20,7 +20,7 @@ tests:
           value: false
       - equal:
           path: spec.template.spec.containers[0].ports[0].name
-          value: http
+          value: dns-tcp
 
   - it: uses digest over tag when both are set
     set:
