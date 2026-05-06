@@ -37,6 +37,22 @@ entries:
   technitium:
   - apiVersion: v2
     appVersion: 14.3.0
+    created: "2026-05-06T15:14:29.473825433Z"
+    description: Technitium DNS server with web dashboard
+    digest: b4799385e12e2563cfc29dbe47e594c68404cc17391f22c1dc6e4a3c5976cfbc
+    keywords:
+    - dns
+    - technitium
+    maintainers:
+    - name: junpeng-jp
+      url: https://github.com/junpeng-jp
+    name: technitium
+    type: application
+    urls:
+    - https://github.com/junpeng-jp/helm-charts/releases/download/technitium-1.0.0/technitium-1.0.0.tgz
+    version: 1.0.0
+  - apiVersion: v2
+    appVersion: 14.3.0
     created: "2026-05-05T01:08:06.670357969Z"
     description: Technitium DNS server with web dashboard
     digest: 41cf7a5bcd72280e2e7c31068511c6aedda7cc72a1c4f2a0e057c180caa84df7
@@ -51,4 +67,4 @@ entries:
     urls:
     - https://github.com/junpeng-jp/helm-charts/releases/download/technitium-0.1.1/technitium-0.1.1.tgz
     version: 0.1.1
-generated: "2026-05-05T01:08:06.670364411Z"
+generated: "2026-05-06T15:14:29.473838217Z"
