@@ -3,9 +3,9 @@ image:
 
 networking:
   service:
-    clusterIp:
+    main:
       enabled: true
-    loadBalancer:
+    dns:
       enabled: false
 
 persistence:

@@ -1,9 +1,4 @@
-{{- $port := 0 -}}
-{{- if .Values.networking.service.clusterIp.enabled -}}
-{{-   $port = .Values.networking.service.clusterIp.ports.http.port -}}
-{{- else if .Values.networking.service.loadBalancer.enabled -}}
-{{-   $port = .Values.networking.service.loadBalancer.ports.http.port -}}
-{{- end -}}
+{{- $port := (index .Values.networking.service.main.ports "http").port -}}
 apiVersion: v1
 kind: Pod
 metadata:

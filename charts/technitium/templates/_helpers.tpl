@@ -49,17 +49,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Build env entries from config and networking.webPortal.
+Build env entries from config and networking.service.
 Renders a YAML list fragment (no leading "env:" key).
 Append env[] after this in the statefulset to allow value overrides.
 */}}
 {{- define "technitium.configEnv" -}}
-{{- $ports := dict -}}
-{{- if .Values.networking.service.clusterIp.enabled -}}
-{{-   $ports = .Values.networking.service.clusterIp.ports -}}
-{{- else if .Values.networking.service.loadBalancer.enabled -}}
-{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
-{{- end -}}
+{{- $mainPorts := .Values.networking.service.main.ports -}}
+{{- $dnsPorts := .Values.networking.service.dns.ports -}}
 - name: DNS_SERVER_DOMAIN
   value: {{ .Values.config.domain | quote }}
 {{- if .Values.config.preferIPv6 }}
@@ -113,22 +109,23 @@ Append env[] after this in the statefulset to allow value overrides.
   value: {{ .Values.config.stats.maxStatFileDays | quote }}
 {{- end }}
 - name: DNS_SERVER_WEB_SERVICE_HTTP_PORT
-  value: {{ (index $ports "http").port | quote }}
-{{- if .Values.networking.webPortal.https.enabled }}
+  value: {{ (index $mainPorts "http").port | quote }}
+{{- $https := index $mainPorts "https" -}}
+{{- if and $https (ne (toString $https.enabled) "false") }}
 - name: DNS_SERVER_WEB_SERVICE_ENABLE_HTTPS
   value: "true"
 - name: DNS_SERVER_WEB_SERVICE_HTTPS_PORT
-  value: {{ .Values.networking.webPortal.https.port | quote }}
-{{- if .Values.networking.webPortal.https.selfSignedCert }}
+  value: {{ $https.port | quote }}
+{{- if .Values.config.webService.selfSignedCert }}
 - name: DNS_SERVER_WEB_SERVICE_USE_SELF_SIGNED_CERT
   value: "true"
 {{- end }}
-{{- if .Values.networking.webPortal.https.httpToTlsRedirect }}
+{{- if .Values.config.webService.httpToTlsRedirect }}
 - name: DNS_SERVER_WEB_SERVICE_HTTP_TO_TLS_REDIRECT
   value: "true"
 {{- end }}
 {{- end }}
-{{- $dohPlain := index $ports "doh-plain" -}}
+{{- $dohPlain := index $dnsPorts "doh-plain" -}}
 {{- if and $dohPlain (ne (toString $dohPlain.enabled) "false") }}
 - name: DNS_SERVER_OPTIONAL_PROTOCOL_DNS_OVER_HTTP
   value: "true"

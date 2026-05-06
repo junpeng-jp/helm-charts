@@ -83,19 +83,24 @@ pod:
 
 networking:
   service:
-    clusterIp:
-      enabled: false
-      ports:
-        http:
-          port: 5380
-          protocol: TCP
-    loadBalancer:
+    # Admin web portal — ClusterIP for ingress routing.
+    main:
       enabled: true
+      type: ClusterIP
       ports:
         http:
           port: 5380
           protocol: TCP
-        # DNS — UDP and TCP share the same port number; enable both together
+        # HTTPS web portal — enable together with config.webService.selfSignedCert or a TLS terminator.
+        https:
+          port: 53443    # DNS_SERVER_WEB_SERVICE_HTTPS_PORT
+          protocol: TCP
+          enabled: false
+    # DNS traffic — LoadBalancer for direct external access.
+    dns:
+      enabled: true
+      type: LoadBalancer
+      ports:
         dns-udp:
           port: 53
           protocol: UDP
@@ -127,14 +132,6 @@ networking:
           port: 8053
           protocol: TCP
           enabled: false
-
-  # HTTPS settings for the Technitium web console.
-  webPortal:
-    https:
-      enabled: false
-      port: 53443       # DNS_SERVER_WEB_SERVICE_HTTPS_PORT
-      selfSignedCert: false         # DNS_SERVER_WEB_SERVICE_USE_SELF_SIGNED_CERT
-      httpToTlsRedirect: false      # DNS_SERVER_WEB_SERVICE_HTTP_TO_TLS_REDIRECT
 
 ingress:
   gateway:
@@ -188,6 +185,10 @@ config:
   #   env:
   #     - name: DNS_SERVER_ADMIN_PASSWORD_FILE
   #       value: /run/secrets/<secretName>/password
+
+  webService:
+    selfSignedCert: false         # DNS_SERVER_WEB_SERVICE_USE_SELF_SIGNED_CERT
+    httpToTlsRedirect: false      # DNS_SERVER_WEB_SERVICE_HTTP_TO_TLS_REDIRECT
 
   preferIPv6: false     # DNS_SERVER_PREFER_IPV6
 

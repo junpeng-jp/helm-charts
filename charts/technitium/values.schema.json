@@ -113,19 +113,13 @@
         "service": {
           "type": "object",
           "additionalProperties": false,
-          "not": {
-            "required": ["clusterIp", "loadBalancer"],
-            "properties": {
-              "clusterIp":    { "properties": { "enabled": { "const": true } } },
-              "loadBalancer": { "properties": { "enabled": { "const": true } } }
-            }
-          },
           "properties": {
-            "clusterIp": {
+            "main": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "enabled": { "type": "boolean" },
+                "type":    { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
                 "ports": {
                   "type": "object",
                   "additionalProperties": {
@@ -141,11 +135,12 @@
                 }
               }
             },
-            "loadBalancer": {
+            "dns": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "enabled": { "type": "boolean" },
+                "type":    { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
                 "ports": {
                   "type": "object",
                   "additionalProperties": {
@@ -159,22 +154,6 @@
                     }
                   }
                 }
-              }
-            }
-          }
-        },
-        "webPortal": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "https": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enabled":           { "type": "boolean" },
-                "port":              { "type": "integer" },
-                "selfSignedCert":    { "type": "boolean" },
-                "httpToTlsRedirect": { "type": "boolean" }
               }
             }
           }
@@ -300,6 +279,14 @@
           "properties": {
             "enableInMemoryStats": { "type": "boolean" },
             "maxStatFileDays":     { "type": "integer", "minimum": 0 }
+          }
+        },
+        "webService": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "selfSignedCert":    { "type": "boolean" },
+            "httpToTlsRedirect": { "type": "boolean" }
           }
         }
       }

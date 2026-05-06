@@ -393,99 +393,102 @@ pod:
 
 ## 6. Networking
 
-`networking.service` configures the Kubernetes Service. The service type is expressed by choosing a named sub-key (`cluster-ip` or `load-balancer`) rather than a `type` string — only one may be enabled at a time, enforced by `values.schema.json`.
+`networking.service` is a **map** where each key is a logical service name (e.g. `main`, `dns`). Each entry configures one Kubernetes Service resource. Multiple services may be enabled simultaneously — use this when an application needs to expose different port groups with different service types (e.g. a ClusterIP for HTTP traffic and a LoadBalancer for DNS).
 
-`ports` is a **map** keyed by port name under whichever service type is active. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec — use this for ports that are off by default but meaningful to expose at the user's discretion.
+`type` accepts standard Kubernetes service types: `ClusterIP`, `LoadBalancer`, or `NodePort`.
 
-The port named `http` is the primary port. It is always present and is the target for `ingress.gateway` and `ingress.traefik` (section 7).
+`ports` is a **map** keyed by port name within each service. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec — use this for ports that are off by default but meaningful to expose at the user's discretion.
 
-Each chart's `values.schema.json` **must** enforce that exactly one service type is enabled at a time.
+**Port names must be unique across all services within a chart.** The rendered container port list is derived from all enabled services and their enabled ports; duplicate names would produce an invalid pod spec.
+
+The port named `http` in the service named `main` is the primary port and is the target for `ingress.gateway` and `ingress.traefik` (section 7).
+
+Service naming convention: the service named `main` renders as `<fullname>` (no suffix); all other services render as `<fullname>-<service-name>`.
+
+Each chart's `values.schema.json` must define `networking.service` as an object whose `additionalProperties` schema describes the per-service shape.
 
 ```yaml
 networking:
   service:
-    clusterIp:
+    main:
       enabled: true
-      ports:
-        http:
-          port: 8080
-          protocol: TCP
-    loadBalancer:
-      enabled: false
+      type: ClusterIP
       ports:
         http:
           port: 8080
           protocol: TCP
 ```
 
-`service.yaml` inspects which sub-key has `enabled: true` and renders the Service with the matching `type`. Template rendering pattern:
+`service.yaml` iterates over all entries and renders one Service per enabled entry. Template rendering pattern:
 
 ```
 {{- /* service.yaml */ -}}
-{{- $svcType := "" -}}
-{{- $ports := dict -}}
-{{- if .Values.networking.service.clusterIp.enabled -}}
-{{-   $svcType = "ClusterIP" -}}
-{{-   $ports = .Values.networking.service.clusterIp.ports -}}
-{{- else if .Values.networking.service.loadBalancer.enabled -}}
-{{-   $svcType = "LoadBalancer" -}}
-{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
-{{- end }}
+{{- range $svcName, $svc := .Values.networking.service }}
+{{- if $svc.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ if eq $svcName "main" }}{{ include "<chart>.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "<chart>.fullname" $) $svcName }}{{ end }}
+  ...
 spec:
-  type: {{ $svcType }}
+  type: {{ $svc.type }}
   ports:
-    {{- range $name, $port := $ports }}
+    {{- range $portName, $port := $svc.ports }}
     {{- if ne (toString $port.enabled) "false" }}
-    - name: {{ $name }}
+    - name: {{ $portName }}
       port: {{ $port.port }}
-      targetPort: {{ $name }}
+      targetPort: {{ $portName }}
       protocol: {{ $port.protocol }}
     {{- end }}
     {{- end }}
+{{- end }}
+{{- end }}
 ```
 
-Apply the same range pattern in the workload template to keep container port names in sync with the Service. Iterate over whichever service type is enabled using the same `$ports` resolution above:
+Apply the same range pattern in the workload template to keep container port names in sync. Iterate over all enabled services and their enabled ports:
 
 ```
 {{- /* statefulset.yaml / deployment.yaml */ -}}
 ports:
-  {{- range $name, $port := $ports }}
+  {{- range $svcName, $svc := .Values.networking.service }}
+  {{- if $svc.enabled }}
+  {{- range $portName, $port := $svc.ports }}
   {{- if ne (toString $port.enabled) "false" }}
-  - name: {{ $name }}
+  - name: {{ $portName }}
     containerPort: {{ $port.port }}
     protocol: {{ $port.protocol }}
+  {{- end }}
+  {{- end }}
   {{- end }}
   {{- end }}
 ```
 
 ### 6.1 Multi-protocol ports
 
-Some applications expose the same logical service over multiple transport protocols (e.g., a DNS server listening on both UDP and TCP on port 53). Model each physical port as a separate map entry, and group them with a shared comment:
+Some applications expose the same logical service over multiple transport protocols (e.g., a DNS server listening on both UDP and TCP on port 53). Model each physical port as a separate map entry, and group them with a shared comment. Use multiple named services to group ports by access pattern (e.g. in-cluster HTTP vs. externally-accessible DNS):
 
 ```yaml
 networking:
   service:
-    clusterIp:
-      enabled: false
-      ports:
-        http:
-          port: 5380
-          protocol: TCP
-    loadBalancer:
+    main:
       enabled: true
+      type: ClusterIP
       ports:
         http:
           port: 5380
           protocol: TCP
+    dns:
+      enabled: false
+      type: LoadBalancer
+      ports:
         # DNS — UDP and TCP share the same port number; enable both together
         dns-udp:
           port: 53
           protocol: UDP
-          enabled: false
         dns-tcp:
           port: 53
           protocol: TCP
-          enabled: false
         # DNS over TLS
         dot:
           port: 853

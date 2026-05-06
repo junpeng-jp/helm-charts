@@ -2,13 +2,43 @@ suite: Service
 templates:
   - templates/service.yaml
 tests:
-  - it: renders a LoadBalancer service with dashboard and DNS ports
+  - it: renders two services by default (main ClusterIP and dns LoadBalancer)
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: renders main service as ClusterIP with http port
+    documentIndex: 0
     asserts:
       - isKind:
           of: Service
       - equal:
           path: metadata.name
           value: RELEASE-NAME-technitium
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].name
+          value: http
+      - equal:
+          path: spec.ports[0].port
+          value: 5380
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: technitium
+      - equal:
+          path: spec.selector["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+
+  - it: renders dns service as LoadBalancer with dns-tcp and dns-udp ports
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-technitium-dns
       - equal:
           path: spec.type
           value: LoadBalancer
@@ -24,15 +54,27 @@ tests:
       - equal:
           path: spec.ports[1].port
           value: 53
+
+  - it: renders only main service when dns is disabled
+    set:
+      networking.service.dns.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Service
       - equal:
-          path: spec.ports[2].name
-          value: http
+          path: spec.type
+          value: ClusterIP
+
+  - it: renders only dns service when main is disabled
+    set:
+      networking.service.main.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Service
       - equal:
-          path: spec.ports[2].port
-          value: 5380
-      - equal:
-          path: spec.selector["app.kubernetes.io/name"]
-          value: technitium
-      - equal:
-          path: spec.selector["app.kubernetes.io/instance"]
-          value: RELEASE-NAME
+          path: spec.type
+          value: LoadBalancer
