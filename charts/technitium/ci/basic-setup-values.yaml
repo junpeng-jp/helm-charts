@@ -1,14 +1,16 @@
-image:
-  tag: "14.3.0"
+global:
+  image:
+    tag: "14.3.0"
 
 networking:
   service:
-    clusterIp:
+    main:
       enabled: true
-    loadBalancer:
+    dns:
       enabled: false
 
 persistence:
   enabled: true
+  fixPermissions: true
   storageClass: local-path
   size: 1Gi

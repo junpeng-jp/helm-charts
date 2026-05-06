@@ -18,17 +18,16 @@ These principles govern the chart design.
 
 Maintain this top-to-bottom ordering in `values.yaml` for consistency across charts:
 
-0. [`global`](#0-global)
+0. [`global`](#0-global) — includes `global.image`
 1. [`nameOverride`, `fullnameOverride`, `replicaCount`](#1-naming)
-2. [`image`](#2-image-registry)
-3. [`serviceAccount`](#3-service-account)
-4. [`initContainers`, `env`, `secretVolumeMounts`, `extraVolumes`, `extraVolumeMounts`, `livenessProbe`, `readinessProbe`, `resources`](#4-initialization)
-5. [`podSecurityContext`, `containerSecurityContext`, `pod`](#5-security-context)
-6. [`networking`](#6-networking)
-7. [`ingress`](#7-ingress)
-8. [`persistence`](#8-storage)
-9. [`monitor`](#9-monitors)
-10. [Chart-specific subsystems](#10-chart-specific-subsystems)
+2. [`serviceAccount`](#2-service-account)
+3. [`initContainers`, `env`, `secretVolumeMounts`, `extraVolumes`, `extraVolumeMounts`, `livenessProbe`, `readinessProbe`, `resources`](#3-initialization)
+4. [`podSecurityContext`, `containerSecurityContext`, `pod`](#4-security-context)
+5. [`networking`](#5-networking)
+6. [`ingress`](#6-ingress)
+7. [`persistence`](#7-storage)
+8. [`monitor`](#8-monitors)
+9. [Chart-specific subsystems](#9-chart-specific-subsystems)
 
 ---
 
@@ -52,20 +51,26 @@ Example skeleton:
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "nameOverride": { "type": "string" },
-    "fullnameOverride": { "type": "string" },
-    "image": {
+    "global": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "registry":    { "type": "string" },
-        "repository":  { "type": "string" },
-        "tag":         { "type": "string" },
-        "digest":      { "type": "string" },
-        "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
-        "pullSecrets": { "type": "array", "items": { "type": "string" } }
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "registry":    { "type": "string" },
+            "repository":  { "type": "string" },
+            "tag":         { "type": "string" },
+            "digest":      { "type": "string" },
+            "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+            "pullSecrets": { "type": "array", "items": { "type": "string" } }
+          }
+        }
       }
-    }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" }
   }
 }
 ```
@@ -74,26 +79,30 @@ Example skeleton:
 
 ## 0. Global
 
-`global` mirrors the Bitnami convention for cluster-wide overrides. When set, these values take precedence over their chart-local counterparts and cascade into sub-charts.
+`global` holds settings that must be resolved before any chart-specific defaults are applied. `global.image` centralises image coordinates for the chart.
 
 ```yaml
 global:
-  imageRegistry: ""        # overrides image.registry for all images in the chart
-  imagePullSecrets: []     # list of pull-secret names; merged with image.pullSecrets
-  storageClass: ""         # overrides persistence.storageClass
+  image:
+    registry: docker.io
+    repository: some-org/some-container
+    tag: ""                   # required: pin the version to deploy — does not fall back to Chart.AppVersion
+    digest: ""                # takes precedence over tag when set (e.g. sha256:abc123)
+    pullPolicy: IfNotPresent
+    pullSecrets: []           # list of imagePullSecret names
 ```
 
-When `global.imageRegistry` is non-empty it overrides `image.registry`. When `global.storageClass` is non-empty it overrides `persistence.storageClass`. `global.imagePullSecrets` is prepended to `image.pullSecrets` before rendering `imagePullSecrets` in the pod spec.
+`tag` is intentionally left empty in the standard pattern to force the deployer to pin a version explicitly. Charts that ship a known-good default may pre-fill it (e.g. `tag: "1.2.3"`).
 
 Template rendering pattern in `_helpers.tpl`:
 
 ```
 {{- define "<chart>.image" -}}
-{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
-{{- $repository := .Values.image.repository -}}
-{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
-{{- if .Values.image.digest }}
-{{- printf "%s/%s@%s" $registry $repository .Values.image.digest }}
+{{- $registry := .Values.global.image.registry -}}
+{{- $repository := .Values.global.image.repository -}}
+{{- $tag := .Values.global.image.tag -}}
+{{- if .Values.global.image.digest }}
+{{- printf "%s/%s@%s" $registry $repository .Values.global.image.digest }}
 {{- else }}
 {{- printf "%s/%s:%s" $registry $repository $tag }}
 {{- end }}
@@ -117,38 +126,7 @@ replicaCount: 1        # number of pod replicas; keep at 1 for StatefulSets unle
 
 ---
 
-## 2. Image Registry
-
-Split registry from repository. This allows the registry to be changed independently (e.g. to a internal mirror) without touching the repository path.
-
-```yaml
-image:
-  registry: ghcr.io
-  repository: some-org/some-container   # path only — does not include the registry
-  tag: ""           # defaults to .Chart.AppVersion when empty
-  digest: ""        # takes precedence over tag when set (e.g. sha256:abc123)
-  pullPolicy: IfNotPresent
-  pullSecrets: []   # list of imagePullSecret names
-```
-
-Template rendering pattern in `_helpers.tpl`:
-
-```
-{{- define "<chart>.image" -}}
-{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
-{{- $repository := .Values.image.repository -}}
-{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
-{{- if .Values.image.digest }}
-{{- printf "%s/%s@%s" $registry $repository .Values.image.digest }}
-{{- else }}
-{{- printf "%s/%s:%s" $registry $repository $tag }}
-{{- end }}
-{{- end }}
-```
-
----
-
-## 3. Service Account
+## 2. Service Account
 
 Every chart includes this block. When `create: false` and `name: ""`, the pod uses the namespace default service account.
 
@@ -163,11 +141,11 @@ When `create: true`, `_helpers.tpl` creates the ServiceAccount and the pod spec 
 
 ---
 
-## 4. Initialization
+## 3. Initialization
 
 This section groups everything that configures how the workload starts and runs: init containers, environment and secret injection, probes, and resource constraints.
 
-### 4.1 Init Containers
+### 3.1 Init Containers
 
 For any initialization container, initContainers provide a way to passthrough configuration for direct rendering.
 
@@ -185,7 +163,7 @@ initContainers:
       runAsUser: 0   # root required to chown; main container runs as 1000
 ```
 
-### 4.2 Environment Variables
+### 3.2 Environment Variables
 
 Use the standard Kubernetes `env` list. Supports literal values and references to external Secrets or ConfigMaps. No inline secret values are permitted in `values.yaml`.
 
@@ -205,7 +183,7 @@ env:
         key: log-level
 ```
 
-### 4.3 Secret File Mounts
+### 3.3 Secret File Mounts
 
 Use `secretVolumeMounts` to mount a Kubernetes Secret as files. The chart automatically creates the volume and volumeMount. Secrets are always mounted under `/run/secrets/<secretName>/` and are always read-only. This path is typically tmpfs-backed on Linux, so secret data does not touch disk.
 
@@ -227,7 +205,7 @@ The chart generates:
 #     readOnly: true
 ```
 
-### 4.4 Extra Volumes
+### 3.4 Extra Volumes
 
 Both fields accept the full Kubernetes volume and volumeMount specs without wrapping.
 
@@ -248,11 +226,11 @@ extraVolumeMounts:
     mountPath: /dev/ttyUSB0
 ```
 
-### 4.5 Security Rule
+### 3.5 Security Rule
 
 This section enforces the **No inline secrets** design guideline. No chart may include a plain-text secret field in `values.yaml` (e.g., `password: ""`). Use `secretKeyRef` in `env` ([Environment Variables](#42-environment-variables)) or `secretVolumeMounts` ([Secret File Mounts](#43-secret-file-mounts)) to reference an externally-managed Kubernetes Secret instead.
 
-### 4.6 Probes
+### 3.6 Probes
 
 Liveness and readiness probes sit at the top level of `values.yaml`. Include them **only when the app exposes a known HTTP health endpoint**. Each probe has an `enabled` flag.
 
@@ -286,7 +264,7 @@ livenessProbe:
 {{- end }}
 ```
 
-### 4.7 Resources
+### 3.7 Resources
 
 Always provide default `requests` and `limits`. CPU limits may be omitted intentionally for workloads that spike; document the reason in a comment.
 
@@ -302,11 +280,11 @@ resources:
 
 ---
 
-## 5. Security Context
+## 4. Security Context
 
 Following Bitnami convention, security context is split into two top-level fields: `podSecurityContext` for the shared pod environment and `containerSecurityContext` for the main container's OS-level privileges. Pod scheduling metadata is grouped separately under `pod`. Init containers override security context via their own inline `securityContext` field in the `initContainers` spec.
 
-### 5.1 Pod Security Context
+### 4.1 Pod Security Context
 
 `podSecurityContext` sets defaults inherited by **all containers** in the pod (init and main). It governs the shared pod environment: volume ownership, supplemental groups, and kernel-level settings.
 
@@ -344,7 +322,7 @@ podSecurityContext:
       value: "3"
 ```
 
-### 5.2 Container Security Context
+### 4.2 Container Security Context
 
 `containerSecurityContext` controls what the **main container's process is allowed to do at the OS level** — Linux capabilities, privilege escalation, filesystem mutability, and privileged mode. These settings apply only to the main container and override any pod-level defaults.
 
@@ -361,7 +339,7 @@ containerSecurityContext:
     # add: [NET_BIND_SERVICE]   # add back only what the app requires
 ```
 
-### 5.3 Pod Scheduling
+### 4.3 Pod Scheduling
 
 `pod` groups scheduling metadata — fields that control where and how the pod is placed on the cluster. Every field accepts the full Kubernetes spec without wrapping.
 
@@ -391,101 +369,104 @@ pod:
 
 ---
 
-## 6. Networking
+## 5. Networking
 
-`networking.service` configures the Kubernetes Service. The service type is expressed by choosing a named sub-key (`cluster-ip` or `load-balancer`) rather than a `type` string — only one may be enabled at a time, enforced by `values.schema.json`.
+`networking.service` is a **map** where each key is a logical service name (e.g. `main`, `dns`). Each entry configures one Kubernetes Service resource. Multiple services may be enabled simultaneously — use this when an application needs to expose different port groups with different service types (e.g. a ClusterIP for HTTP traffic and a LoadBalancer for DNS).
 
-`ports` is a **map** keyed by port name under whichever service type is active. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec — use this for ports that are off by default but meaningful to expose at the user's discretion.
+`type` accepts standard Kubernetes service types: `ClusterIP`, `LoadBalancer`, or `NodePort`.
 
-The port named `http` is the primary port. It is always present and is the target for `ingress.gateway` and `ingress.traefik` (section 7).
+`ports` is a **map** keyed by port name within each service. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec — use this for ports that are off by default but meaningful to expose at the user's discretion.
 
-Each chart's `values.schema.json` **must** enforce that exactly one service type is enabled at a time.
+**Port names must be unique across all services within a chart.** The rendered container port list is derived from all enabled services and their enabled ports; duplicate names would produce an invalid pod spec.
+
+The port named `http` in the service named `main` is the primary port and is the target for `ingress.gateway` and `ingress.traefik` (section 7).
+
+Service naming convention: the service named `main` renders as `<fullname>` (no suffix); all other services render as `<fullname>-<service-name>`.
+
+Each chart's `values.schema.json` must define `networking.service` as an object whose `additionalProperties` schema describes the per-service shape.
 
 ```yaml
 networking:
   service:
-    clusterIp:
+    main:
       enabled: true
-      ports:
-        http:
-          port: 8080
-          protocol: TCP
-    loadBalancer:
-      enabled: false
+      type: ClusterIP
       ports:
         http:
           port: 8080
           protocol: TCP
 ```
 
-`service.yaml` inspects which sub-key has `enabled: true` and renders the Service with the matching `type`. Template rendering pattern:
+`service.yaml` iterates over all entries and renders one Service per enabled entry. Template rendering pattern:
 
 ```
 {{- /* service.yaml */ -}}
-{{- $svcType := "" -}}
-{{- $ports := dict -}}
-{{- if .Values.networking.service.clusterIp.enabled -}}
-{{-   $svcType = "ClusterIP" -}}
-{{-   $ports = .Values.networking.service.clusterIp.ports -}}
-{{- else if .Values.networking.service.loadBalancer.enabled -}}
-{{-   $svcType = "LoadBalancer" -}}
-{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
-{{- end }}
+{{- range $svcName, $svc := .Values.networking.service }}
+{{- if $svc.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ if eq $svcName "main" }}{{ include "<chart>.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "<chart>.fullname" $) $svcName }}{{ end }}
+  ...
 spec:
-  type: {{ $svcType }}
+  type: {{ $svc.type }}
   ports:
-    {{- range $name, $port := $ports }}
+    {{- range $portName, $port := $svc.ports }}
     {{- if ne (toString $port.enabled) "false" }}
-    - name: {{ $name }}
+    - name: {{ $portName }}
       port: {{ $port.port }}
-      targetPort: {{ $name }}
+      targetPort: {{ $portName }}
       protocol: {{ $port.protocol }}
     {{- end }}
     {{- end }}
+{{- end }}
+{{- end }}
 ```
 
-Apply the same range pattern in the workload template to keep container port names in sync with the Service. Iterate over whichever service type is enabled using the same `$ports` resolution above:
+Apply the same range pattern in the workload template to keep container port names in sync. Iterate over all enabled services and their enabled ports:
 
 ```
 {{- /* statefulset.yaml / deployment.yaml */ -}}
 ports:
-  {{- range $name, $port := $ports }}
+  {{- range $svcName, $svc := .Values.networking.service }}
+  {{- if $svc.enabled }}
+  {{- range $portName, $port := $svc.ports }}
   {{- if ne (toString $port.enabled) "false" }}
-  - name: {{ $name }}
+  - name: {{ $portName }}
     containerPort: {{ $port.port }}
     protocol: {{ $port.protocol }}
   {{- end }}
   {{- end }}
+  {{- end }}
+  {{- end }}
 ```
 
-### 6.1 Multi-protocol ports
+### 5.1 Multi-protocol ports
 
-Some applications expose the same logical service over multiple transport protocols (e.g., a DNS server listening on both UDP and TCP on port 53). Model each physical port as a separate map entry, and group them with a shared comment:
+Some applications expose the same logical service over multiple transport protocols (e.g., a DNS server listening on both UDP and TCP on port 53). Model each physical port as a separate map entry, and group them with a shared comment. Use multiple named services to group ports by access pattern (e.g. in-cluster HTTP vs. externally-accessible DNS):
 
 ```yaml
 networking:
   service:
-    clusterIp:
-      enabled: false
-      ports:
-        http:
-          port: 5380
-          protocol: TCP
-    loadBalancer:
+    main:
       enabled: true
+      type: ClusterIP
       ports:
         http:
           port: 5380
           protocol: TCP
+    dns:
+      enabled: false
+      type: LoadBalancer
+      ports:
         # DNS — UDP and TCP share the same port number; enable both together
         dns-udp:
           port: 53
           protocol: UDP
-          enabled: false
         dns-tcp:
           port: 53
           protocol: TCP
-          enabled: false
         # DNS over TLS
         dot:
           port: 853
@@ -497,7 +478,7 @@ Kubernetes permits two Service port entries with the same `port` number when the
 
 ---
 
-## 7. Ingress
+## 6. Ingress
 
 `ingress` configures how the application is exposed outside the cluster. It is intentionally separate from `networking` (which configures the Kubernetes Service) to keep transport-layer and HTTP-routing concerns distinct.
 
@@ -534,7 +515,7 @@ Templates: `httproute.yaml` renders the `gateway.networking.k8s.io/v1` HTTPRoute
 
 ---
 
-## 8. Storage
+## 7. Storage
 
 Use the Bitnami-style schema with `enabled` flag and `accessModes` as a list.
 
@@ -554,7 +535,7 @@ When `existingClaim` is non-empty, the chart skips the `volumeClaimTemplates` en
 
 ---
 
-## 9. Monitors
+## 8. Monitors
 
 `monitor.metric` creates a Prometheus `ServiceMonitor` targeting the chart's Service. Disabled by default; enable only when the app exposes a Prometheus-compatible scrape endpoint. `labels` must match the target Prometheus instance's `serviceMonitorSelector`.
 
@@ -571,7 +552,7 @@ monitor:
 
 ---
 
-## 10. Chart-specific subsystems
+## 9. Chart-specific subsystems
 
 Anything that doesn't fit the standard sections goes here, after `monitor`. Each subsystem gets its own top-level key with a comment explaining its purpose.
 

@@ -7,26 +7,23 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "imageRegistry":    { "type": "string" },
-        "imagePullSecrets": { "type": "array", "items": { "type": "string" } },
-        "storageClass":     { "type": "string" }
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "registry":    { "type": "string" },
+            "repository":  { "type": "string" },
+            "tag":         { "type": "string" },
+            "digest":      { "type": "string" },
+            "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+            "pullSecrets": { "type": "array", "items": { "type": "string" } }
+          }
+        }
       }
     },
     "nameOverride":     { "type": "string" },
     "fullnameOverride": { "type": "string" },
     "replicaCount":     { "type": "integer", "minimum": 1 },
-    "image": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "registry":    { "type": "string" },
-        "repository":  { "type": "string" },
-        "tag":         { "type": "string" },
-        "digest":      { "type": "string" },
-        "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
-        "pullSecrets": { "type": "array", "items": { "type": "string" } }
-      }
-    },
     "serviceAccount": {
       "type": "object",
       "additionalProperties": false,
@@ -113,19 +110,13 @@
         "service": {
           "type": "object",
           "additionalProperties": false,
-          "not": {
-            "required": ["clusterIp", "loadBalancer"],
-            "properties": {
-              "clusterIp":    { "properties": { "enabled": { "const": true } } },
-              "loadBalancer": { "properties": { "enabled": { "const": true } } }
-            }
-          },
           "properties": {
-            "clusterIp": {
+            "main": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "enabled": { "type": "boolean" },
+                "type":    { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
                 "ports": {
                   "type": "object",
                   "additionalProperties": {
@@ -141,11 +132,12 @@
                 }
               }
             },
-            "loadBalancer": {
+            "dns": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "enabled": { "type": "boolean" },
+                "type":    { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
                 "ports": {
                   "type": "object",
                   "additionalProperties": {
@@ -159,22 +151,6 @@
                     }
                   }
                 }
-              }
-            }
-          }
-        },
-        "webPortal": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "https": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enabled":           { "type": "boolean" },
-                "port":              { "type": "integer" },
-                "selfSignedCert":    { "type": "boolean" },
-                "httpToTlsRedirect": { "type": "boolean" }
               }
             }
           }
@@ -227,8 +203,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled":       { "type": "boolean" },
-        "storageClass":  { "type": "string" },
+        "enabled":          { "type": "boolean" },
+        "fixPermissions":   { "type": "boolean" },
+        "storageClass":     { "type": "string" },
         "accessModes":   { "type": "array", "items": { "type": "string" } },
         "size":          { "type": "string" },
         "annotations":   { "type": "object" },
@@ -300,6 +277,14 @@
           "properties": {
             "enableInMemoryStats": { "type": "boolean" },
             "maxStatFileDays":     { "type": "integer", "minimum": 0 }
+          }
+        },
+        "webService": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "selfSignedCert":    { "type": "boolean" },
+            "httpToTlsRedirect": { "type": "boolean" }
           }
         }
       }

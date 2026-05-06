@@ -18,14 +18,30 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
           value: false
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: dns-tcp
+            containerPort: 53
+            protocol: TCP
       - equal:
-          path: spec.template.spec.containers[0].ports[0].name
-          value: dns-tcp
+          path: spec.template.spec.initContainers[0].name
+          value: fix-permissions
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.runAsUser
+          value: 0
+
+  - it: omits the fix-permissions initContainer when fixPermissions is disabled
+    set:
+      persistence.fixPermissions: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
 
   - it: uses digest over tag when both are set
     set:
-      image.tag: "14.0.0"
-      image.digest: "sha256:abc123"
+      global.image.tag: "14.0.0"
+      global.image.digest: "sha256:abc123"
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -69,3 +85,29 @@ tests:
       - equal:
           path: metadata.name
           value: my-dns
+
+  - it: renders DNS_SERVER_DOMAIN env var from config.domain
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DNS_SERVER_DOMAIN
+            value: dns-server
+
+  - it: renders forwarder env vars when addresses are set
+    set:
+      config.forwarders.addresses:
+        - 1.1.1.1
+        - 8.8.8.8
+      config.forwarders.protocol: Tls
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DNS_SERVER_FORWARDERS
+            value: "1.1.1.1, 8.8.8.8"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DNS_SERVER_FORWARDER_PROTOCOL
+            value: Tls

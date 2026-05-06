@@ -1,24 +1,20 @@
 global:
-  imageRegistry: ""        # overrides image.registry
-  imagePullSecrets: []     # merged with image.pullSecrets
-  storageClass: ""         # overrides persistence.storageClass
+  image:
+    registry: docker.io
+    repository: technitium/dns-server
+    tag: "14.3.0"           # pin the version to deploy; does not fall back to Chart.AppVersion
+    digest: ""              # takes precedence over tag when set (e.g. sha256:abc123)
+    pullPolicy: IfNotPresent
+    pullSecrets: []
 
-nameOverride: ""
-fullnameOverride: ""
+nameOverride: ""          # overrides chart name in resource names
+fullnameOverride: ""      # replaces the full release-name + chart-name pattern
 
 replicaCount: 1
 
-image:
-  registry: docker.io
-  repository: technitium/dns-server
-  tag: ""           # defaults to Chart.AppVersion when empty
-  digest: ""        # takes precedence over tag when set (e.g. sha256:abc123)
-  pullPolicy: IfNotPresent
-  pullSecrets: []
-
 serviceAccount:
   create: false
-  name: ""
+  name: ""      # defaults to fullname when create: true, "default" otherwise
   annotations: {}
 
 initContainers: []
@@ -83,19 +79,24 @@ pod:
 
 networking:
   service:
-    clusterIp:
-      enabled: false
-      ports:
-        http:
-          port: 5380
-          protocol: TCP
-    loadBalancer:
+    # Admin web portal — ClusterIP for ingress routing.
+    main:
       enabled: true
+      type: ClusterIP
       ports:
         http:
           port: 5380
           protocol: TCP
-        # DNS — UDP and TCP share the same port number; enable both together
+        # HTTPS web portal — enable together with config.webService.selfSignedCert or a TLS terminator.
+        https:
+          port: 53443    # DNS_SERVER_WEB_SERVICE_HTTPS_PORT
+          protocol: TCP
+          enabled: false
+    # DNS traffic — LoadBalancer for direct external access.
+    dns:
+      enabled: true
+      type: LoadBalancer
+      ports:
         dns-udp:
           port: 53
           protocol: UDP
@@ -128,14 +129,6 @@ networking:
           protocol: TCP
           enabled: false
 
-  # HTTPS settings for the Technitium web console.
-  webPortal:
-    https:
-      enabled: false
-      port: 53443       # DNS_SERVER_WEB_SERVICE_HTTPS_PORT
-      selfSignedCert: false         # DNS_SERVER_WEB_SERVICE_USE_SELF_SIGNED_CERT
-      httpToTlsRedirect: false      # DNS_SERVER_WEB_SERVICE_HTTP_TO_TLS_REDIRECT
-
 ingress:
   gateway:
     enabled: false
@@ -162,13 +155,14 @@ ingress:
 
 persistence:
   enabled: true
-  storageClass: ""
+  fixPermissions: true   # runs a built-in initContainer to chown /etc/dns; disable only if your storage class honours fsGroup reliably
+  storageClass: ""      # "" uses cluster default
   accessModes:
     - ReadWriteOnce
   size: 2Gi
   annotations: {}
   labels: {}
-  existingClaim: ""
+  existingClaim: ""     # mount an existing PVC instead of creating one
 
 monitor:
   metric:
@@ -188,6 +182,10 @@ config:
   #   env:
   #     - name: DNS_SERVER_ADMIN_PASSWORD_FILE
   #       value: /run/secrets/<secretName>/password
+
+  webService:
+    selfSignedCert: false         # DNS_SERVER_WEB_SERVICE_USE_SELF_SIGNED_CERT
+    httpToTlsRedirect: false      # DNS_SERVER_WEB_SERVICE_HTTP_TO_TLS_REDIRECT
 
   preferIPv6: false     # DNS_SERVER_PREFER_IPV6
 
