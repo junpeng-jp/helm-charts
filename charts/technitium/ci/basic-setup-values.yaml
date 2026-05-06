@@ -1,5 +1,6 @@
-image:
-  tag: "14.3.0"
+global:
+  image:
+    tag: "14.3.0"
 
 networking:
   service:
@@ -10,5 +11,6 @@ networking:
 
 persistence:
   enabled: true
+  fixPermissions: true
   storageClass: local-path
   size: 1Gi

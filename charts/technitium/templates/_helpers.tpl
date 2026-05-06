@@ -38,11 +38,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "technitium.image" -}}
-{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
-{{- $repository := .Values.image.repository -}}
-{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
-{{- if .Values.image.digest }}
-{{- printf "%s/%s@%s" $registry $repository .Values.image.digest }}
+{{- $registry := .Values.global.image.registry -}}
+{{- $repository := .Values.global.image.repository -}}
+{{- $tag := .Values.global.image.tag -}}
+{{- if .Values.global.image.digest }}
+{{- printf "%s/%s@%s" $registry $repository .Values.global.image.digest }}
 {{- else }}
 {{- printf "%s/%s:%s" $registry $repository $tag }}
 {{- end }}

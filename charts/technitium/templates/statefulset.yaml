@@ -20,7 +20,7 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "technitium.serviceAccountName" . }}
-      {{- $pullSecrets := concat .Values.global.imagePullSecrets .Values.image.pullSecrets }}
+      {{- $pullSecrets := .Values.global.image.pullSecrets }}
       {{- if $pullSecrets }}
       imagePullSecrets:
         {{- range $pullSecrets }}
@@ -31,14 +31,27 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.initContainers }}
+      {{- if or (and .Values.persistence.enabled .Values.persistence.fixPermissions) .Values.initContainers }}
       initContainers:
+        {{- if and .Values.persistence.enabled .Values.persistence.fixPermissions }}
+        - name: fix-permissions
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }} /etc/dns"]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dns
+        {{- end }}
+        {{- with .Values.initContainers }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       containers:
         - name: technitium
           image: {{ include "technitium.image" . }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           ports:
             {{- range $svcName, $svc := .Values.networking.service }}
             {{- if ne (toString $svc.enabled) "false" }}
@@ -129,7 +142,7 @@ spec:
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}
-        {{- $storageClass := .Values.global.storageClass | default .Values.persistence.storageClass }}
+        {{- $storageClass := .Values.persistence.storageClass }}
         {{- if $storageClass }}
         storageClassName: {{ $storageClass }}
         {{- end }}
