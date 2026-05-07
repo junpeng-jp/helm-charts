@@ -203,14 +203,29 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled":          { "type": "boolean" },
-        "fixPermissions":   { "type": "boolean" },
-        "storageClass":     { "type": "string" },
+        "enabled":       { "type": "boolean" },
+        "storageClass":  { "type": "string" },
         "accessModes":   { "type": "array", "items": { "type": "string" } },
         "size":          { "type": "string" },
         "annotations":   { "type": "object" },
         "labels":        { "type": "object" },
-        "existingClaim": { "type": "string" }
+        "existingClaim": { "type": "string" },
+        "fixPermissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag":        { "type": "string" },
+                "digest":     { "type": "string" }
+              }
+            }
+          }
+        }
       }
     },
     "monitor": {

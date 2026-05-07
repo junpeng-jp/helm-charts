@@ -65,6 +65,7 @@ podSecurityContext:
 
 containerSecurityContext:
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities:
     drop:
       - ALL
@@ -155,7 +156,6 @@ ingress:
 
 persistence:
   enabled: true
-  fixPermissions: true   # runs a built-in initContainer to chown /etc/dns; disable only if your storage class honours fsGroup reliably
   storageClass: ""      # "" uses cluster default
   accessModes:
     - ReadWriteOnce
@@ -163,6 +163,12 @@ persistence:
   annotations: {}
   labels: {}
   existingClaim: ""     # mount an existing PVC instead of creating one
+  fixPermissions:
+    enabled: true       # runs a built-in initContainer to chown /etc/dns; disable only if your storage class honours fsGroup reliably
+    image:
+      repository: busybox
+      tag: "1.36"
+      digest: ""        # takes precedence over tag when set (e.g. sha256:abc123)
 
 monitor:
   metric:

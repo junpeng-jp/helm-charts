@@ -11,6 +11,7 @@ networking:
 
 persistence:
   enabled: true
-  fixPermissions: true
+  fixPermissions:
+    enabled: true
   storageClass: local-path
   size: 1Gi

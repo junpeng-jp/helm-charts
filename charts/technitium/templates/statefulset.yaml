@@ -31,18 +31,20 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if or (and .Values.persistence.enabled .Values.persistence.fixPermissions) .Values.initContainers }}
+      {{- if or (and .Values.persistence.enabled .Values.persistence.fixPermissions.enabled) .Values.initContainers }}
       initContainers:
-        {{- if and .Values.persistence.enabled .Values.persistence.fixPermissions }}
+        {{- if and .Values.persistence.enabled .Values.persistence.fixPermissions.enabled }}
         - name: fix-permissions
-          image: busybox:1.36
-          command: ["sh", "-c", "chown -R {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }} /etc/dns"]
+          image: {{ include "technitium.initImage" . }}
+          command: ["sh", "-c", "chown -R {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }} /etc/dns /var/log/technitium"]
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
           volumeMounts:
             - name: config
               mountPath: /etc/dns
+            - name: log
+              mountPath: /var/log/technitium
         {{- end }}
         {{- with .Values.initContainers }}
         {{- toYaml . | nindent 8 }}
@@ -86,6 +88,10 @@ spec:
             - name: config
               mountPath: /etc/dns
             {{- end }}
+            - name: log
+              mountPath: /var/log/technitium
+            - name: tmp
+              mountPath: /tmp
             {{- range .Values.secretVolumeMounts }}
             - name: {{ .secretName }}
               mountPath: /run/secrets/{{ .secretName }}
@@ -98,8 +104,11 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.secretVolumeMounts .Values.extraVolumes }}
       volumes:
+        - name: log
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
         {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
         - name: config
           persistentVolumeClaim:
@@ -113,7 +122,6 @@ spec:
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- end }}
       {{- with .Values.pod.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
