@@ -18,12 +18,35 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
           value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
       - contains:
           path: spec.template.spec.containers[0].ports
           content:
             name: dns-tcp
             containerPort: 53
             protocol: TCP
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: log
+            mountPath: /var/log/technitium
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: log
+            emptyDir: {}
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: {}
       - equal:
           path: spec.template.spec.initContainers[0].name
           value: fix-permissions
@@ -33,7 +56,7 @@ tests:
 
   - it: omits the fix-permissions initContainer when fixPermissions is disabled
     set:
-      persistence.fixPermissions: false
+      persistence.fixPermissions.enabled: false
     asserts:
       - notExists:
           path: spec.template.spec.initContainers
@@ -111,3 +134,37 @@ tests:
           content:
             name: DNS_SERVER_FORWARDER_PROTOCOL
             value: Tls
+
+  - it: always mounts log and tmp emptyDirs even when persistence is disabled
+    set:
+      persistence.enabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: log
+            emptyDir: {}
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: {}
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: log
+            mountPath: /var/log/technitium
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+
+  - it: uses initImage digest over tag when both are set
+    set:
+      persistence.fixPermissions.image.tag: "1.36"
+      persistence.fixPermissions.image.digest: "sha256:deadbeef"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: busybox@sha256:deadbeef

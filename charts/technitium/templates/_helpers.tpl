@@ -48,6 +48,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- end }}
 
+{{- define "technitium.initImage" -}}
+{{- if .Values.persistence.fixPermissions.image.digest }}
+{{- printf "%s@%s" .Values.persistence.fixPermissions.image.repository .Values.persistence.fixPermissions.image.digest }}
+{{- else }}
+{{- printf "%s:%s" .Values.persistence.fixPermissions.image.repository .Values.persistence.fixPermissions.image.tag }}
+{{- end }}
+{{- end }}
+
 {{/*
 Build env entries from config and networking.service.
 Renders a YAML list fragment (no leading "env:" key).
