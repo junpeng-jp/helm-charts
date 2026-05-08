@@ -24,4 +24,4 @@ tests:
           value: my-gateway
       - equal:
           path: spec.rules[0].backendRefs[0].port
-          value: http
+          value: 8123

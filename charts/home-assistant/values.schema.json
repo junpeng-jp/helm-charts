@@ -7,26 +7,23 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "imageRegistry":    { "type": "string" },
-        "imagePullSecrets": { "type": "array", "items": { "type": "string" } },
-        "storageClass":     { "type": "string" }
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "registry":    { "type": "string" },
+            "repository":  { "type": "string" },
+            "tag":         { "type": "string" },
+            "digest":      { "type": "string" },
+            "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+            "pullSecrets": { "type": "array", "items": { "type": "string" } }
+          }
+        }
       }
     },
     "nameOverride":     { "type": "string" },
     "fullnameOverride": { "type": "string" },
     "replicaCount":     { "type": "integer", "minimum": 1 },
-    "image": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "registry":    { "type": "string" },
-        "repository":  { "type": "string" },
-        "tag":         { "type": "string" },
-        "digest":      { "type": "string" },
-        "pullPolicy":  { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
-        "pullSecrets": { "type": "array", "items": { "type": "string" } }
-      }
-    },
     "serviceAccount": {
       "type": "object",
       "additionalProperties": false,
@@ -56,7 +53,9 @@
         "required": ["secretName"],
         "additionalProperties": false,
         "properties": {
-          "secretName": { "type": "string" }
+          "secretName": { "type": "string" },
+          "mountPath":  { "type": "string" },
+          "name":       { "type": "string", "description": "Volume name override. Defaults to secretName. Required when the same secretName appears more than once to avoid duplicate volume names." }
         }
       }
     },
@@ -113,51 +112,26 @@
       "properties": {
         "service": {
           "type": "object",
-          "additionalProperties": false,
-          "not": {
-            "required": ["clusterIp", "loadBalancer"],
+          "required": ["main"],
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
             "properties": {
-              "clusterIp":    { "properties": { "enabled": { "const": true } } },
-              "loadBalancer": { "properties": { "enabled": { "const": true } } }
-            }
-          },
-          "properties": {
-            "clusterIp": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enabled": { "type": "boolean" },
-                "ports": {
+              "enabled": { "type": "boolean" },
+              "type": {
+                "type": "string",
+                "enum": ["ClusterIP", "LoadBalancer", "NodePort"]
+              },
+              "ports": {
+                "type": "object",
+                "additionalProperties": {
                   "type": "object",
-                  "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["port", "protocol"],
-                    "properties": {
-                      "port":     { "type": "integer" },
-                      "protocol": { "type": "string", "enum": ["TCP", "UDP"] },
-                      "enabled":  { "type": "boolean" }
-                    }
-                  }
-                }
-              }
-            },
-            "loadBalancer": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enabled": { "type": "boolean" },
-                "ports": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["port", "protocol"],
-                    "properties": {
-                      "port":     { "type": "integer" },
-                      "protocol": { "type": "string", "enum": ["TCP", "UDP"] },
-                      "enabled":  { "type": "boolean" }
-                    }
+                  "additionalProperties": false,
+                  "required": ["port", "protocol"],
+                  "properties": {
+                    "port":     { "type": "integer" },
+                    "protocol": { "type": "string", "enum": ["TCP", "UDP"] },
+                    "enabled":  { "type": "boolean" }
                   }
                 }
               }
@@ -176,15 +150,7 @@
           "properties": {
             "enabled":    { "type": "boolean" },
             "parentRefs": { "type": "array", "items": { "type": "object" } },
-            "hostnames":  { "type": "array", "items": { "type": "string" } },
-            "tls": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enabled":    { "type": "boolean" },
-                "secretName": { "type": "string" }
-              }
-            }
+            "hostnames":  { "type": "array", "items": { "type": "string" } }
           }
         },
         "traefik": {
@@ -194,7 +160,18 @@
             "enabled":     { "type": "boolean" },
             "entryPoints": { "type": "array", "items": { "type": "string" } },
             "hostnames":   { "type": "array", "items": { "type": "string" } },
-            "middlewares": { "type": "array", "items": { "type": "string" } },
+            "middlewares": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": false,
+                "properties": {
+                  "name":      { "type": "string" },
+                  "namespace": { "type": "string" }
+                }
+              }
+            },
             "tls": {
               "type": "object",
               "additionalProperties": false,
@@ -239,13 +216,59 @@
         }
       }
     },
-    "usbDevice": {
+    "homeAssistant": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled":   { "type": "boolean" },
-        "hostPath":  { "type": "string" },
-        "mountPath": { "type": "string" }
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "name":    { "type": "string" },
+            "http": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "useXForwardedFor": { "type": "boolean" },
+                "trustedProxies":   { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "logger": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "type": "string",
+                  "enum": ["debug", "info", "warning", "error", "critical", "fatal"]
+                }
+              }
+            }
+          }
+        },
+        "packages": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "files": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "usbDevices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["hostPath", "mountPath"],
+            "properties": {
+              "hostPath":  { "type": "string" },
+              "mountPath": { "type": "string" }
+            }
+          }
+        }
       }
     }
   }

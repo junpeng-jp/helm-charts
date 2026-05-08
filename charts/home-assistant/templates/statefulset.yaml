@@ -1,12 +1,3 @@
-{{- $svcType := "" -}}
-{{- $ports := dict -}}
-{{- if .Values.networking.service.clusterIp.enabled -}}
-{{-   $svcType = "ClusterIP" -}}
-{{-   $ports = .Values.networking.service.clusterIp.ports -}}
-{{- else if .Values.networking.service.loadBalancer.enabled -}}
-{{-   $svcType = "LoadBalancer" -}}
-{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
-{{- end -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -33,16 +24,15 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
       serviceAccountName: {{ include "home-assistant.serviceAccountName" . }}
-      {{- $pullSecrets := concat .Values.global.imagePullSecrets .Values.image.pullSecrets }}
-      {{- if $pullSecrets }}
-      imagePullSecrets:
-        {{- range $pullSecrets }}
-        - name: {{ . }}
-        {{- end }}
-      {{- end }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
       {{- end }}
       {{- with .Values.initContainers }}
       initContainers:
@@ -51,21 +41,27 @@ spec:
       containers:
         - name: home-assistant
           image: {{ include "home-assistant.image" . }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           ports:
-            {{- range $name, $port := $ports }}
-            {{- if ne (toString $port.enabled) "false" }}
-            - name: {{ $name }}
+            {{- range $svcName := keys .Values.networking.service | sortAlpha }}
+            {{- $svc := index $.Values.networking.service $svcName }}
+            {{- if $svc.enabled }}
+            {{- range $portName := keys $svc.ports | sortAlpha }}
+            {{- $port := index $svc.ports $portName }}
+            {{- if (default true $port.enabled) }}
+            - name: {{ $portName }}
               containerPort: {{ $port.port }}
               protocol: {{ $port.protocol }}
             {{- end }}
             {{- end }}
-          {{- with .Values.env }}
-          env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
+            {{- end }}
           {{- with .Values.containerSecurityContext }}
           securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.env }}
+          env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- if .Values.livenessProbe.enabled }}
@@ -81,13 +77,24 @@ spec:
             - name: config
               mountPath: /config
             {{- end }}
-            {{- if .Values.usbDevice.enabled }}
-            - name: usb-device
-              mountPath: {{ .Values.usbDevice.mountPath }}
+            {{- if .Values.homeAssistant.config.enabled }}
+            - name: ha-config
+              mountPath: /config/configuration.yaml
+              subPath: configuration.yaml
+              readOnly: true
+            {{- end }}
+            {{- if .Values.homeAssistant.packages.enabled }}
+            - name: ha-packages
+              mountPath: /config/packages
+              readOnly: true
+            {{- end }}
+            {{- range $i, $dev := .Values.homeAssistant.usbDevices }}
+            - name: usb-device-{{ $i }}
+              mountPath: {{ $dev.mountPath }}
             {{- end }}
             {{- range .Values.secretVolumeMounts }}
-            - name: {{ .secretName }}
-              mountPath: /run/secrets/{{ .secretName }}
+            - name: {{ default .secretName .name }}
+              mountPath: {{ .mountPath | default (printf "/run/secrets/%s" .secretName) }}
               readOnly: true
             {{- end }}
             {{- with .Values.extraVolumeMounts }}
@@ -97,20 +104,30 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.usbDevice.enabled .Values.secretVolumeMounts .Values.extraVolumes }}
+      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.homeAssistant.config.enabled .Values.homeAssistant.packages.enabled .Values.homeAssistant.usbDevices .Values.secretVolumeMounts .Values.extraVolumes }}
       volumes:
         {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
         - name: config
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim }}
         {{- end }}
-        {{- if .Values.usbDevice.enabled }}
-        - name: usb-device
+        {{- if .Values.homeAssistant.config.enabled }}
+        - name: ha-config
+          configMap:
+            name: {{ include "home-assistant.fullname" . }}-config
+        {{- end }}
+        {{- if .Values.homeAssistant.packages.enabled }}
+        - name: ha-packages
+          configMap:
+            name: {{ include "home-assistant.fullname" . }}-packages
+        {{- end }}
+        {{- range $i, $dev := .Values.homeAssistant.usbDevices }}
+        - name: usb-device-{{ $i }}
           hostPath:
-            path: {{ .Values.usbDevice.hostPath }}
+            path: {{ $dev.hostPath }}
         {{- end }}
         {{- range .Values.secretVolumeMounts }}
-        - name: {{ .secretName }}
+        - name: {{ default .secretName .name }}
           secret:
             secretName: {{ .secretName }}
         {{- end }}
@@ -139,16 +156,12 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         labels:
-          {{- include "home-assistant.labels" . | nindent 10 }}
-          {{- with .Values.persistence.labels }}
-          {{- toYaml . | nindent 10 }}
-          {{- end }}
+          {{- merge (include "home-assistant.labels" . | fromYaml) (.Values.persistence.labels | default dict) | toYaml | nindent 10 }}
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}
-        {{- $storageClass := .Values.global.storageClass | default .Values.persistence.storageClass }}
-        {{- if $storageClass }}
-        storageClassName: {{ $storageClass }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
         {{- end }}
         resources:
           requests:

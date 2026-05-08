@@ -37,12 +37,33 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- end }}
 
+{{- define "home-assistant.configYaml" -}}
+homeassistant:
+  name: {{ .Values.homeAssistant.config.name | quote }}
+  {{- if .Values.homeAssistant.packages.enabled }}
+  packages: !include_dir_named packages
+  {{- end }}
+
+# Loads default integrations (history, logbook, frontend, sun, mobile app, etc.)
+default_config:
+
+http:
+  use_x_forwarded_for: {{ .Values.homeAssistant.config.http.useXForwardedFor }}
+  trusted_proxies:
+    {{- range .Values.homeAssistant.config.http.trustedProxies }}
+    - {{ . }}
+    {{- end }}
+
+logger:
+  default: {{ .Values.homeAssistant.config.logger.default }}
+{{- end }}
+
 {{- define "home-assistant.image" -}}
-{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
-{{- $repository := .Values.image.repository -}}
-{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
-{{- if .Values.image.digest }}
-{{- printf "%s/%s@%s" $registry $repository .Values.image.digest }}
+{{- $registry := .Values.global.image.registry -}}
+{{- $repository := .Values.global.image.repository -}}
+{{- $tag := .Values.global.image.tag -}}
+{{- if .Values.global.image.digest }}
+{{- printf "%s/%s@%s" $registry $repository .Values.global.image.digest }}
 {{- else }}
 {{- printf "%s/%s:%s" $registry $repository $tag }}
 {{- end }}
