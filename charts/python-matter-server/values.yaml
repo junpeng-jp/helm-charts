@@ -17,21 +17,8 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Enable hostNetwork when running on overlay-network CNIs (e.g. k3s/Flannel) that do not
-# pass mDNS/Thread multicast into the pod network. When true, the pod shares the host's
-# network namespace and dnsPolicy is automatically set to ClusterFirstWithHostNet.
-# Pin the pod to a specific node via pod.nodeSelector so it always uses the same LAN interface.
-#
-# Fix /data ownership before the main container starts (run as root, matter-server runs as uid 568):
-# initContainers:
-#   - name: fix-data-permissions
-#     image: busybox:1.36
-#     command: ["sh", "-c", "chown -R 568:568 /data"]
-#     volumeMounts:
-#       - name: data
-#         mountPath: /data
-#     securityContext:
-#       runAsUser: 0
+# Enable hostNetwork when running on overlay-network CNIs (e.g. k3s/Flannel)
+# that do not pass mDNS/Thread multicast into the pod network.
 initContainers: []
 
 env:
