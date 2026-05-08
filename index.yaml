@@ -34,6 +34,21 @@ entries:
     version: 0.1.1
   python-matter-server:
   - apiVersion: v2
+    created: "2026-05-08T14:40:15.702956568Z"
+    description: A Helm chart for deploying the Python Matter Server on Kubernetes
+    digest: ef6a371456b39b19388ea79ef9a083805ac88e5b0d12e9e0737fb70733ebe7fd
+    keywords:
+    - home-assistant
+    - matter
+    maintainers:
+    - name: junpeng-jp
+      url: https://github.com/junpeng-jp
+    name: python-matter-server
+    type: application
+    urls:
+    - https://github.com/junpeng-jp/helm-charts/releases/download/python-matter-server-1.0.1/python-matter-server-1.0.1.tgz
+    version: 1.0.1
+  - apiVersion: v2
     created: "2026-05-08T13:28:08.382662682Z"
     description: A Helm chart for deploying the Python Matter Server on Kubernetes
     digest: 06bc4924bc1bf8766fe45973a3e2b916e8a7fc1510565b5a2486dc722c84a3d9
@@ -65,6 +80,21 @@ entries:
     - https://github.com/junpeng-jp/helm-charts/releases/download/python-matter-server-0.2.1/python-matter-server-0.2.1.tgz
     version: 0.2.1
   technitium:
+  - apiVersion: v2
+    created: "2026-05-08T14:40:15.846974842Z"
+    description: Technitium DNS server with web dashboard
+    digest: ef6fc1fbbfb4477ccd06505163f9a80cdc6cbf95776951bb22690a14a2c8f47b
+    keywords:
+    - dns
+    - technitium
+    maintainers:
+    - name: junpeng-jp
+      url: https://github.com/junpeng-jp
+    name: technitium
+    type: application
+    urls:
+    - https://github.com/junpeng-jp/helm-charts/releases/download/technitium-1.1.1/technitium-1.1.1.tgz
+    version: 1.1.1
   - apiVersion: v2
     appVersion: 14.3.0
     created: "2026-05-07T15:39:26.788311646Z"
@@ -113,4 +143,4 @@ entries:
     urls:
     - https://github.com/junpeng-jp/helm-charts/releases/download/technitium-0.1.1/technitium-0.1.1.tgz
     version: 0.1.1
-generated: "2026-05-08T13:28:08.382680689Z"
+generated: "2026-05-08T14:40:15.84700056Z"
