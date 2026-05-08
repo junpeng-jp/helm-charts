@@ -34,6 +34,21 @@ entries:
     version: 0.1.1
   python-matter-server:
   - apiVersion: v2
+    created: "2026-05-08T13:28:08.382662682Z"
+    description: A Helm chart for deploying the Python Matter Server on Kubernetes
+    digest: 06bc4924bc1bf8766fe45973a3e2b916e8a7fc1510565b5a2486dc722c84a3d9
+    keywords:
+    - home-assistant
+    - matter
+    maintainers:
+    - name: junpeng-jp
+      url: https://github.com/junpeng-jp
+    name: python-matter-server
+    type: application
+    urls:
+    - https://github.com/junpeng-jp/helm-charts/releases/download/python-matter-server-1.0.0/python-matter-server-1.0.0.tgz
+    version: 1.0.0
+  - apiVersion: v2
     appVersion: 6.6.0
     created: "2026-05-05T01:08:06.556347171Z"
     description: A Helm chart for deploying the Python Matter Server on Kubernetes
@@ -98,4 +113,4 @@ entries:
     urls:
     - https://github.com/junpeng-jp/helm-charts/releases/download/technitium-0.1.1/technitium-0.1.1.tgz
     version: 0.1.1
-generated: "2026-05-08T13:12:43.314992336Z"
+generated: "2026-05-08T13:28:08.382680689Z"
