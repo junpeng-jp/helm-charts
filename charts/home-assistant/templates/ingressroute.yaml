@@ -1,4 +1,7 @@
 {{- if .Values.ingress.traefik.enabled }}
+{{- if not .Values.networking.service.main.enabled }}
+{{- fail "ingress.traefik requires networking.service.main to be enabled" }}
+{{- end }}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -9,22 +12,28 @@ spec:
   entryPoints:
     {{- toYaml .Values.ingress.traefik.entryPoints | nindent 4 }}
   routes:
-    - match: Host(`{{ first .Values.ingress.traefik.hostnames }}`)
+    {{- range .Values.ingress.traefik.hostnames }}
+    - match: Host(`{{ . }}`)
       kind: Rule
       services:
-        - name: {{ include "home-assistant.fullname" . }}
+        - name: {{ include "home-assistant.fullname" $ }}
           port: http
-      {{- with .Values.ingress.traefik.middlewares }}
+      {{- with $.Values.ingress.traefik.middlewares }}
       middlewares:
         {{- range . }}
-        - name: {{ . }}
+        - name: {{ .name }}
+          {{- if .namespace }}
+          namespace: {{ .namespace }}
+          {{- end }}
         {{- end }}
       {{- end }}
+    {{- end }}
   {{- if .Values.ingress.traefik.tls.enabled }}
   tls:
     {{- if .Values.ingress.traefik.tls.secretName }}
     secretName: {{ .Values.ingress.traefik.tls.secretName }}
-    {{- else if .Values.ingress.traefik.tls.certResolver }}
+    {{- end }}
+    {{- if .Values.ingress.traefik.tls.certResolver }}
     certResolver: {{ .Values.ingress.traefik.tls.certResolver }}
     {{- end }}
   {{- end }}

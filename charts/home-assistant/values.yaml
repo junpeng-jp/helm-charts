@@ -1,20 +1,19 @@
 global:
-  imageRegistry: ""        # overrides image.registry
-  imagePullSecrets: []     # merged with image.pullSecrets
-  storageClass: ""         # overrides persistence.storageClass
+  image:
+    registry: ghcr.io
+    repository: home-assistant/home-assistant
+    tag: "2026.5"       # highly encouraged to pin to a specific version of home-assistant
+    digest: ""          # takes precedence over tag when set (e.g. sha256:abc123)
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+    # plain secret names referencing kubernetes.io/dockerconfigjson Secrets.
+    # Create with: kubectl create secret docker-registry <name> \
+    #   --docker-server=<registry> --docker-username=<user> --docker-password=<token>
 
 nameOverride: ""
 fullnameOverride: ""
 
 replicaCount: 1
-
-image:
-  registry: ghcr.io
-  repository: home-assistant/home-assistant
-  tag: ""           # defaults to Chart.AppVersion
-  digest: ""
-  pullPolicy: IfNotPresent
-  pullSecrets: []
 
 serviceAccount:
   create: false
@@ -46,8 +45,8 @@ readinessProbe:
     path: /
     port: http
   initialDelaySeconds: 30
-  periodSeconds: 10
-  failureThreshold: 3
+  periodSeconds: 15
+  failureThreshold: 10
 
 resources:
   requests:
@@ -55,10 +54,7 @@ resources:
     cpu: 100m
   limits:
     memory: 1Gi
-    # CPU limit intentionally omitted — automation runs can spike CPU briefly.
 
-# Add supplementalGroups: [20] (dialout GID) for serial device access without privileged mode.
-# Verify the host GID with: stat /dev/serial/by-id/<your-device>
 podSecurityContext: {}
 
 containerSecurityContext: {}
@@ -68,23 +64,19 @@ pod:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # hostNetwork is required on k3s (Flannel VXLAN drops mDNS/multicast).
-  # Without it, HomeKit, Chromecast, and Matter/Thread discovery will not work.
-  # dnsPolicy is automatically set to ClusterFirstWithHostNet when hostNetwork is true.
-  hostNetwork: true
+  # Set hostNetwork: true on k3s (Flannel VXLAN drops mDNS/multicast) when HomeKit,
+  # Chromecast, or Matter/Thread discovery is required. You need to ensure only
+  # one HA instance runs per node when enabled.
+  hostNetwork: false
 
 networking:
   service:
-    clusterIp:
+    main:
       enabled: true
+      type: ClusterIP
       ports:
         http:
-          port: 8123
-          protocol: TCP
-    loadBalancer:
-      enabled: false
-      ports:
-        http:
+          enabled: true
           port: 8123
           protocol: TCP
 
@@ -96,9 +88,6 @@ ingress:
         namespace: default
     hostnames:
       - ha.example.com
-    tls:
-      enabled: false
-      secretName: ""
 
   traefik:
     enabled: false
@@ -114,7 +103,7 @@ ingress:
 
 persistence:
   enabled: true
-  storageClass: ""  # "" uses cluster default (local-path on k3s)
+  storageClass: ""  # defaults to local-path
   accessModes:
     - ReadWriteOnce
   size: 5Gi
@@ -122,7 +111,6 @@ persistence:
   labels: {}
   existingClaim: ""
 
-# Prometheus ServiceMonitor — requires the Prometheus integration enabled inside HA.
 monitor:
   metric:
     enabled: false
@@ -132,10 +120,46 @@ monitor:
     scrapeTimeout: 10s
     labels: {}
 
-# USB serial device passthrough.
-# Use this only when running Zigbee directly in HA (not recommended — prefer Zigbee2MQTT).
-# Always reference the stable by-id path, never /dev/ttyUSB0.
-usbDevice:
-  enabled: false
-  hostPath: /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_XXXX-if00-port0
-  mountPath: /dev/ttyUSB0
+# Home Assistant application configuration.
+homeAssistant:
+  # config - mounted to /config/configuration.yaml (read-only)
+  config:
+    enabled: false
+
+    name: Home
+
+    # http - required when HA sits behind a reverse proxy (Traefik, nginx, Gateway API).
+    # Without trustedProxies, HA will reject all forwarded requests.
+    http:
+      useXForwardedFor: true
+      trustedProxies:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+
+    logger:
+      default: warning
+
+  # packages - each file is mounted into /config/packages/ (read-only).
+  # Loaded by HA via `packages: !include_dir_named packages` in configuration.yaml.
+  # Packages can contain: automation, script, sensor, binary_sensor,
+  # input_boolean, input_number, input_select, input_text, group, etc.
+  # See: https://www.home-assistant.io/docs/configuration/packages/
+  packages:
+    enabled: false
+    files: {}
+    # Example:
+    # files:
+    #   network.yaml: |
+    #     sensor:
+    #       - platform: ping
+    #         host: 192.168.1.1
+    #         name: Router
+
+  # USB serial device passthrough. Each entry mounts one device into the container.
+  # Use only when a usb device is required. Reference the stable by-id path.
+  usbDevices: []
+  # Example:
+  # usbDevices:
+  #   - hostPath: /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_XXXX-if00-port0
+  #     mountPath: /dev/ttyUSB0

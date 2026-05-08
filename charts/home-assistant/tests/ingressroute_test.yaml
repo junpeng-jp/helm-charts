@@ -15,7 +15,7 @@ tests:
       ingress.traefik.entryPoints[0]: websecure
       ingress.traefik.tls.enabled: true
       ingress.traefik.tls.certResolver: letsencrypt
-      ingress.traefik.middlewares[0]: ha-auth
+      ingress.traefik.middlewares[0].name: ha-auth
     asserts:
       - isKind:
           of: IngressRoute

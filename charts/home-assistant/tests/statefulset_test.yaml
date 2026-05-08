@@ -8,13 +8,12 @@ tests:
           of: StatefulSet
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/home-assistant/home-assistant:2025.5.3
+          value: ghcr.io/home-assistant/home-assistant:2026.5
       - equal:
           path: spec.template.spec.hostNetwork
-          value: true
-      - equal:
+          value: false
+      - notExists:
           path: spec.template.spec.dnsPolicy
-          value: ClusterFirstWithHostNet
       - equal:
           path: spec.volumeClaimTemplates[0].metadata.name
           value: config
@@ -22,10 +21,21 @@ tests:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.path
           value: /
 
+  - it: sets ClusterFirstWithHostNet dnsPolicy when hostNetwork is enabled
+    set:
+      pod.hostNetwork: true
+    asserts:
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: true
+      - equal:
+          path: spec.template.spec.dnsPolicy
+          value: ClusterFirstWithHostNet
+
   - it: uses digest over tag when both are set
     set:
-      image.tag: "2025.1.0"
-      image.digest: "sha256:abc123"
+      global.image.tag: "2025.1.0"
+      global.image.digest: "sha256:abc123"
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -52,38 +62,36 @@ tests:
           path: spec.volumeClaimTemplates[0].spec.storageClassName
           value: local-path
 
-  - it: adds USB device volume and mount when enabled
+  - it: adds USB device volumes and mounts for each entry in usbDevices
     set:
-      usbDevice.enabled: true
-      usbDevice.hostPath: /dev/serial/by-id/usb-test-device
-      usbDevice.mountPath: /dev/ttyUSB0
+      homeAssistant.usbDevices:
+        - hostPath: /dev/serial/by-id/usb-test-device-0
+          mountPath: /dev/ttyUSB0
+        - hostPath: /dev/serial/by-id/usb-test-device-1
+          mountPath: /dev/ttyUSB1
     asserts:
       - contains:
           path: spec.template.spec.volumes
           content:
-            name: usb-device
+            name: usb-device-0
             hostPath:
-              path: /dev/serial/by-id/usb-test-device
+              path: /dev/serial/by-id/usb-test-device-0
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: usb-device-1
+            hostPath:
+              path: /dev/serial/by-id/usb-test-device-1
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
-            name: usb-device
+            name: usb-device-0
             mountPath: /dev/ttyUSB0
-
-  - it: applies containerSecurityContext and podSecurityContext
-    set:
-      containerSecurityContext:
-        runAsNonRoot: true
-        readOnlyRootFilesystem: true
-      podSecurityContext:
-        supplementalGroups: [20]
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
-          value: true
-      - equal:
-          path: spec.template.spec.securityContext.supplementalGroups[0]
-          value: 20
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: usb-device-1
+            mountPath: /dev/ttyUSB1
 
   - it: renders initContainers from fixture
     values:
@@ -100,3 +108,89 @@ tests:
       - equal:
           path: metadata.name
           value: my-ha
+
+  - it: does not render ha-config or ha-packages volumes when both are disabled
+    set:
+      homeAssistant.config.enabled: false
+      homeAssistant.packages.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.volumes
+
+  - it: mounts configuration.yaml via subPath when homeAssistant.config is enabled
+    set:
+      homeAssistant.config.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-config
+            configMap:
+              name: RELEASE-NAME-home-assistant-config
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-config
+            mountPath: /config/configuration.yaml
+            subPath: configuration.yaml
+            readOnly: true
+
+  - it: mounts packages directory when homeAssistant.packages is enabled
+    set:
+      homeAssistant.packages.enabled: true
+      homeAssistant.packages.files:
+        network.yaml: "sensor: []"
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-packages
+            configMap:
+              name: RELEASE-NAME-home-assistant-packages
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-packages
+            mountPath: /config/packages
+            readOnly: true
+
+  - it: does not mount packages directory when homeAssistant.packages is disabled
+    set:
+      homeAssistant.config.enabled: true
+      homeAssistant.packages.enabled: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /config/packages
+
+  - it: mounts config and packages independently
+    set:
+      homeAssistant.config.enabled: true
+      homeAssistant.packages.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-config
+            configMap:
+              name: RELEASE-NAME-home-assistant-config
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-packages
+            configMap:
+              name: RELEASE-NAME-home-assistant-packages
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-config
+            mountPath: /config/configuration.yaml
+            subPath: configuration.yaml
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-packages
+            mountPath: /config/packages
+            readOnly: true

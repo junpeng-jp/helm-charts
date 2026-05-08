@@ -18,7 +18,7 @@ These principles govern the chart design.
 
 Maintain this top-to-bottom ordering in `values.yaml` for consistency across charts:
 
-0. [`global`](#0-global) — includes `global.image`
+0. [`global`](#0-global) - includes `global.image`
 1. [`nameOverride`, `fullnameOverride`, `replicaCount`](#1-naming)
 2. [`serviceAccount`](#2-service-account)
 3. [`initContainers`, `env`, `secretVolumeMounts`, `extraVolumes`, `extraVolumeMounts`, `livenessProbe`, `readinessProbe`, `resources`](#3-initialization)
@@ -86,7 +86,7 @@ global:
   image:
     registry: docker.io
     repository: some-org/some-container
-    tag: ""                   # required: pin the version to deploy — does not fall back to Chart.AppVersion
+    tag: ""                   # required: pin the version to deploy - does not fall back to Chart.AppVersion
     digest: ""                # takes precedence over tag when set (e.g. sha256:abc123)
     pullPolicy: IfNotPresent
     pullSecrets: []           # list of imagePullSecret names
@@ -190,7 +190,12 @@ Use `secretVolumeMounts` to mount a Kubernetes Secret as files. The chart automa
 ```yaml
 secretVolumeMounts:
   - secretName: my-external-secret   # K8s Secret name
+  - secretName: my-external-secret   # same secret, different mount path
+    mountPath: /run/secrets/alias
+    name: my-secret-alias            # required: volume names must be unique; set when the same secretName appears more than once
 ```
+
+The optional `name` field overrides the Kubernetes volume name (defaults to `secretName`). It is required whenever the same `secretName` appears more than once in the list - duplicate volume names cause a Kubernetes admission rejection.
 
 The chart generates:
 
@@ -253,7 +258,7 @@ readinessProbe:
   failureThreshold: 3
 ```
 
-When the app has no usable HTTP health endpoint, omit both fields entirely and add a one-line comment in the workload template (e.g. `# No HTTP health endpoint — probes omitted`).
+When the app has no usable HTTP health endpoint, omit both fields entirely and add a one-line comment in the workload template (e.g. `# No HTTP health endpoint - probes omitted`).
 
 Template rendering pattern:
 
@@ -275,7 +280,7 @@ resources:
     cpu: 100m
   limits:
     memory: 1Gi
-    # cpu intentionally omitted — automation workloads can spike briefly
+    # cpu intentionally omitted - automation workloads can spike briefly
 ```
 
 ---
@@ -301,13 +306,13 @@ podSecurityContext:
 `sysctls` accepts a list of `name`/`value` pairs. Only *safe* sysctls (those in Kubernetes' allowlist) are permitted by default; unsafe sysctls require an explicit `allowedUnsafeSysctls` admission configuration on the node.
 
 ```yaml
-# Increase the local port range — useful for apps that open many outbound connections
+# Increase the local port range - useful for apps that open many outbound connections
 podSecurityContext:
   sysctls:
     - name: net.ipv4.ip_local_port_range
       value: "1024 65535"
 
-# Raise the socket receive/send buffer limits — useful for high-throughput UDP (e.g. DNS, game servers)
+# Raise the socket receive/send buffer limits - useful for high-throughput UDP (e.g. DNS, game servers)
 podSecurityContext:
   sysctls:
     - name: net.core.rmem_max
@@ -324,7 +329,7 @@ podSecurityContext:
 
 ### 4.2 Container Security Context
 
-`containerSecurityContext` controls what the **main container's process is allowed to do at the OS level** — Linux capabilities, privilege escalation, filesystem mutability, and privileged mode. These settings apply only to the main container and override any pod-level defaults.
+`containerSecurityContext` controls what the **main container's process is allowed to do at the OS level** - Linux capabilities, privilege escalation, filesystem mutability, and privileged mode. These settings apply only to the main container and override any pod-level defaults.
 
 ```yaml
 containerSecurityContext:
@@ -341,7 +346,7 @@ containerSecurityContext:
 
 ### 4.3 Pod Scheduling
 
-`pod` groups scheduling metadata — fields that control where and how the pod is placed on the cluster. Every field accepts the full Kubernetes spec without wrapping.
+`pod` groups scheduling metadata - fields that control where and how the pod is placed on the cluster. Every field accepts the full Kubernetes spec without wrapping.
 
 ```yaml
 pod:
@@ -351,7 +356,7 @@ pod:
   affinity: {}
 ```
 
-Example — pin to a specific node, tolerate a dedicated taint, and label the pod for a backup tool:
+Example - pin to a specific node, tolerate a dedicated taint, and label the pod for a backup tool:
 
 ```yaml
 pod:
@@ -371,24 +376,20 @@ pod:
 
 ## 5. Networking
 
-`networking.service` is a **map** where each key is a logical service name (e.g. `main`, `dns`). Each entry configures one Kubernetes Service resource. Multiple services may be enabled simultaneously — use this when an application needs to expose different port groups with different service types (e.g. a ClusterIP for HTTP traffic and a LoadBalancer for DNS).
+`networking.service` is a **map** where each key is a logical service name (e.g. `main`, `dns`). Each entry configures one Kubernetes Service resource. Multiple services may be enabled simultaneously - use this when an application needs to expose different port groups with different service types (e.g. a ClusterIP for HTTP traffic and a LoadBalancer for DNS).
 
 `type` accepts standard Kubernetes service types: `ClusterIP`, `LoadBalancer`, or `NodePort`.
 
-`ports` is a **map** keyed by port name within each service. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec — use this for ports that are off by default but meaningful to expose at the user's discretion.
+`ports` is a **map** keyed by port name within each service. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec - use this for ports that are off by default but meaningful to expose at the user's discretion.
 
 **Port names must be unique across all services within a chart.** The rendered container port list is derived from all enabled services and their enabled ports; duplicate names would produce an invalid pod spec.
 
-The port named `http` in the service named `main` is the primary port and is the target for `ingress.gateway` and `ingress.traefik` (section 7).
-
-Service naming convention: the service named `main` renders as `<fullname>` (no suffix); all other services render as `<fullname>-<service-name>`.
-
-Each chart's `values.schema.json` must define `networking.service` as an object whose `additionalProperties` schema describes the per-service shape.
+Each chart's `values.schema.json` must define `networking.service` as an object with `"required": ["<name1>", "<name2>"]` and an `additionalProperties` schema describing the per-service shape.
 
 ```yaml
 networking:
   service:
-    main:
+    webapp:
       enabled: true
       type: ClusterIP
       ports:
@@ -397,11 +398,12 @@ networking:
           protocol: TCP
 ```
 
-`service.yaml` iterates over all entries and renders one Service per enabled entry. Template rendering pattern:
+`service.yaml` iterates over all entries and renders one Service per enabled entry. Use `keys | sortAlpha` for deterministic rendering order (map iteration order is non-deterministic in Go and can produce diff noise across helm runs). Template rendering pattern:
 
 ```
 {{- /* service.yaml */ -}}
-{{- range $svcName, $svc := .Values.networking.service }}
+{{- range $svcName := keys .Values.networking.service | sortAlpha }}
+{{- $svc := index $.Values.networking.service $svcName }}
 {{- if $svc.enabled }}
 ---
 apiVersion: v1
@@ -412,8 +414,9 @@ metadata:
 spec:
   type: {{ $svc.type }}
   ports:
-    {{- range $portName, $port := $svc.ports }}
-    {{- if ne (toString $port.enabled) "false" }}
+    {{- range $portName := keys $svc.ports | sortAlpha }}
+    {{- $port := index $svc.ports $portName }}
+    {{- if (default true $port.enabled) }}
     - name: {{ $portName }}
       port: {{ $port.port }}
       targetPort: {{ $portName }}
@@ -424,15 +427,19 @@ spec:
 {{- end }}
 ```
 
-Apply the same range pattern in the workload template to keep container port names in sync. Iterate over all enabled services and their enabled ports:
+The port `enabled` field uses `default true $port.enabled` - omitting the field is equivalent to `enabled: true`. Do not use `ne (toString $port.enabled) "false"`; that pattern is fragile and renders ports when `enabled` is set to `0` or an empty string.
+
+Apply the same range pattern in the workload template to keep container port names in sync:
 
 ```
 {{- /* statefulset.yaml / deployment.yaml */ -}}
 ports:
-  {{- range $svcName, $svc := .Values.networking.service }}
+  {{- range $svcName := keys .Values.networking.service | sortAlpha }}
+  {{- $svc := index $.Values.networking.service $svcName }}
   {{- if $svc.enabled }}
-  {{- range $portName, $port := $svc.ports }}
-  {{- if ne (toString $port.enabled) "false" }}
+  {{- range $portName := keys $svc.ports | sortAlpha }}
+  {{- $port := index $svc.ports $portName }}
+  {{- if (default true $port.enabled) }}
   - name: {{ $portName }}
     containerPort: {{ $port.port }}
     protocol: {{ $port.protocol }}
@@ -460,7 +467,7 @@ networking:
       enabled: false
       type: LoadBalancer
       ports:
-        # DNS — UDP and TCP share the same port number; enable both together
+        # DNS - UDP and TCP share the same port number; enable both together
         dns-udp:
           port: 53
           protocol: UDP
@@ -482,7 +489,21 @@ Kubernetes permits two Service port entries with the same `port` number when the
 
 `ingress` configures how the application is exposed outside the cluster. It is intentionally separate from `networking` (which configures the Kubernetes Service) to keep transport-layer and HTTP-routing concerns distinct.
 
-Multiple ingress mechanisms may be defined in a chart, but each chart's `values.schema.json` **must** enforce that at most one is enabled at a time using a JSON Schema constraint (e.g. `not` with `required`, or a `oneOf` over enabled combinations). Enabling more than one simultaneously is unsupported unless the chart explicitly documents distinct paths or entrypoints for each.
+Multiple ingress mechanisms may be defined in a chart, but **at most one may be enabled at a time**. Enforce this with a template-level `fail` guard at the top of each ingress template (simpler and more readable than JSON Schema `not`/`oneOf` constructs):
+
+```
+{{- if and .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled }}
+{{- fail "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)" }}
+{{- end }}
+```
+
+Each ingress template must also guard against the a specific service that it routes to since ingress routes are meaningless without a backend:
+
+```
+{{- if not .Values.networking.service.main.enabled }}
+{{- fail "ingress requires networking.service.main to be enabled" }}
+{{- end }}
+```
 
 ```yaml
 ingress:
@@ -493,25 +514,33 @@ ingress:
         namespace: default       # omit if Gateway is in the same namespace as the chart
     hostnames:                   # list of hostnames this route matches (Gateway API HTTPRoute spec)
       - app.example.com
-    tls:
-      enabled: false
-      secretName: app-tls        # reference a pre-existing TLS Secret; omit to use the Gateway's listener TLS
 
   traefik:
     enabled: false
     entryPoints:
       - websecure
-    host: app.example.com
-    middlewares: []         # list of Middleware resource names (must exist in same namespace)
+    hostnames:
+      - app.example.com
+    middlewares: []              # list of Traefik Middleware refs: {name, namespace?}
+    # Example: [{name: my-auth}, {name: my-auth, namespace: traefik}]
     tls:
       enabled: false
       secretName: ""        # use a pre-existing TLS secret
       certResolver: ""      # use a Traefik cert resolver (e.g. letsencrypt); ignored when secretName is set
 ```
 
-Templates: `httproute.yaml` renders the `gateway.networking.k8s.io/v1` HTTPRoute from `ingress.gateway`; `ingressroute.yaml` renders the `traefik.io/v1alpha1` IngressRoute from `ingress.traefik`. Both route to the `http` port of the chart's Service by name.
+`middlewares` entries are objects with `name` (required) and `namespace` (optional; omit for same-namespace middlewares). Template rendering pattern:
 
-> **Deprecated:** The `networking.k8s.io/v1` Ingress resource (previously `ingress.kubernetes`) is no longer supported. Use `ingress.gateway` for standard Kubernetes Gateway API routing.
+```
+{{- range .Values.ingress.traefik.middlewares }}
+- name: {{ .name }}
+  {{- if .namespace }}
+  namespace: {{ .namespace }}
+  {{- end }}
+{{- end }}
+```
+
+Templates: `httproute.yaml` renders the `gateway.networking.k8s.io/v1` HTTPRoute from `ingress.gateway`; `ingressroute.yaml` renders the `traefik.io/v1alpha1` IngressRoute from `ingress.traefik`. Both route to the `http` port of the `main` Service.
 
 ---
 
@@ -532,6 +561,15 @@ persistence:
 ```
 
 When `existingClaim` is non-empty, the chart skips the `volumeClaimTemplates` entry (for StatefulSets) or PVC manifest (for Deployments) and references the named claim directly.
+
+When rendering labels on a VolumeClaimTemplate, combine standard chart labels with user-supplied `persistence.labels` using Sprig `merge` to avoid duplicate YAML keys. Standard labels win on conflicts:
+
+```
+labels:
+  {{- merge (include "<chart>.labels" . | fromYaml) (.Values.persistence.labels | default dict) | toYaml | nindent 10 }}
+```
+
+Do not emit the two label blocks separately with `toYaml` - concatenating them produces duplicate keys when any key overlaps, which is technically invalid YAML (last-wins, silently).
 
 ---
 
@@ -558,8 +596,8 @@ Anything that doesn't fit the standard sections goes here, after `monitor`. Each
 
 ### Naming conventions
 
-- **Application config** — settings that map directly to the application's own configuration (env vars, config files, etc.) go under a key named after the application in camelCase (e.g. `technitium`, `homeAssistant`). This makes clear that the block belongs to the app, not the chart harness.
-- **Infrastructure concerns** — hardware passthrough, host-level integration, and other ops-focused knobs go under a descriptive noun key (e.g. `usbDevice`, `hostPorts`).
+- **Application config** - settings that map directly to the application's own configuration (env vars, config files, etc.) go under a key named after the application in camelCase (e.g. `technitium`). This makes clear that the block belongs to the app, not the chart harness.
+
 
 ### Rules
 
@@ -569,27 +607,14 @@ Anything that doesn't fit the standard sections goes here, after `monitor`. Each
 
 ### Examples
 
-**Application config** — structured settings rendered as container env vars or config files:
-
 ```yaml
-# Technitium DNS server configuration.
-# Use env[] for any setting not modelled here.
-technitium:
-  domain: dns-server
-  recursion:
-    mode: AllowOnlyForPrivateNetworks
-  forwarders:
-    addresses: []
-    protocol: Udp
-```
+my-custom-app:
+  # config explicitly mounted somewhere
+  config:
+    key1: value1
+  # usb devices required by this app
+  usbDevices: []
+  # templates mounted for some default setup
+  templates: []
 
-**Device passthrough** — host hardware exposed into the container:
-
-```yaml
-# USB serial device passthrough.
-# Always reference the stable by-id path, never /dev/ttyUSBn.
-usbDevice:
-  enabled: false
-  hostPath: /dev/serial/by-id/usb-...
-  mountPath: /dev/ttyUSB0
 ```

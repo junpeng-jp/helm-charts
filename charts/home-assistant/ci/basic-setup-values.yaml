@@ -1,8 +1,6 @@
-image:
-  tag: "2025.5.3"
-
-pod:
-  hostNetwork: false
+global:
+  image:
+    tag: "2026.5"
 
 persistence:
   enabled: true
