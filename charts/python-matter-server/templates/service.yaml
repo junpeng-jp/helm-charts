@@ -1,28 +1,26 @@
-{{- $svcType := "" -}}
-{{- $ports := dict -}}
-{{- if .Values.networking.service.clusterIp.enabled -}}
-{{-   $svcType = "ClusterIP" -}}
-{{-   $ports = .Values.networking.service.clusterIp.ports -}}
-{{- else if .Values.networking.service.loadBalancer.enabled -}}
-{{-   $svcType = "LoadBalancer" -}}
-{{-   $ports = .Values.networking.service.loadBalancer.ports -}}
-{{- end -}}
+{{- range $svcName := keys .Values.networking.service | sortAlpha }}
+{{- $svc := index $.Values.networking.service $svcName }}
+{{- if $svc.enabled }}
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "python-matter-server.fullname" . }}
+  name: {{ if eq $svcName "main" }}{{ include "python-matter-server.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "python-matter-server.fullname" $) $svcName }}{{ end }}
   labels:
-    {{- include "python-matter-server.labels" . | nindent 4 }}
+    {{- include "python-matter-server.labels" $ | nindent 4 }}
 spec:
-  type: {{ $svcType }}
+  type: {{ $svc.type }}
   selector:
-    {{- include "python-matter-server.selectorLabels" . | nindent 4 }}
+    {{- include "python-matter-server.selectorLabels" $ | nindent 4 }}
   ports:
-    {{- range $name, $port := $ports }}
-    {{- if ne (toString $port.enabled) "false" }}
-    - name: {{ $name }}
+    {{- range $portName := keys $svc.ports | sortAlpha }}
+    {{- $port := index $svc.ports $portName }}
+    {{- if (default true $port.enabled) }}
+    - name: {{ $portName }}
       port: {{ $port.port }}
-      targetPort: {{ $name }}
+      targetPort: {{ $portName }}
       protocol: {{ $port.protocol }}
     {{- end }}
     {{- end }}
+{{- end }}
+{{- end }}

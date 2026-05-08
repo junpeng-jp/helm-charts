@@ -1,4 +1,10 @@
+{{- if and .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled }}
+{{- fail "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)" }}
+{{- end }}
 {{- if .Values.ingress.traefik.enabled }}
+{{- if not .Values.networking.service.websocket.enabled }}
+{{- fail "ingress requires networking.service.websocket to be enabled" }}
+{{- end }}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -12,12 +18,15 @@ spec:
     - match: Host(`{{ first .Values.ingress.traefik.hostnames }}`)
       kind: Rule
       services:
-        - name: {{ include "python-matter-server.fullname" . }}
+        - name: {{ printf "%s-ws" (include "python-matter-server.fullname" .) }}
           port: ws
       {{- with .Values.ingress.traefik.middlewares }}
       middlewares:
         {{- range . }}
-        - name: {{ . }}
+        - name: {{ .name }}
+          {{- if .namespace }}
+          namespace: {{ .namespace }}
+          {{- end }}
         {{- end }}
       {{- end }}
   {{- if .Values.ingress.traefik.tls.enabled }}

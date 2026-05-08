@@ -1,26 +1,37 @@
 global:
-  imageRegistry: ""        # overrides image.registry
-  imagePullSecrets: []     # merged with image.pullSecrets
-  storageClass: ""         # overrides persistence.storageClass
+  image:
+    registry: ghcr.io
+    repository: matter-js/python-matter-server
+    tag: "8.1.2"
+    digest: ""        # takes precedence over tag when set (e.g. sha256:abc123)
+    pullPolicy: IfNotPresent
+    pullSecrets: []
 
 nameOverride: ""
 fullnameOverride: ""
 
 replicaCount: 1
 
-image:
-  registry: ghcr.io
-  repository: home-assistant-libs/python-matter-server
-  tag: ""           # defaults to Chart.AppVersion
-  digest: ""        # takes precedence over tag when set (e.g. sha256:abc123)
-  pullPolicy: IfNotPresent
-  pullSecrets: []
-
 serviceAccount:
   create: false
   name: ""
   annotations: {}
 
+# Enable hostNetwork when running on overlay-network CNIs (e.g. k3s/Flannel) that do not
+# pass mDNS/Thread multicast into the pod network. When true, the pod shares the host's
+# network namespace and dnsPolicy is automatically set to ClusterFirstWithHostNet.
+# Pin the pod to a specific node via pod.nodeSelector so it always uses the same LAN interface.
+#
+# Fix /data ownership before the main container starts (run as root, matter-server runs as uid 568):
+# initContainers:
+#   - name: fix-data-permissions
+#     image: busybox:1.36
+#     command: ["sh", "-c", "chown -R 568:568 /data"]
+#     volumeMounts:
+#       - name: data
+#         mountPath: /data
+#     securityContext:
+#       runAsUser: 0
 initContainers: []
 
 env:
@@ -48,24 +59,22 @@ containerSecurityContext: {}
 
 pod:
   annotations: {}
+  # Pin the pod to a specific node when hostNetwork is true so it always binds to the same
+  # LAN interface. Also useful when a USB/Thread dongle is attached to a particular host.
+  # Example: nodeSelector: { kubernetes.io/hostname: node-01 }
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # hostNetwork is required for mDNS/Thread discovery on overlay-network CNIs (e.g. k3s/Flannel).
-  # dnsPolicy is automatically set to ClusterFirstWithHostNet when hostNetwork is true.
-  # Pin the pod to a specific node with nodeSelector for consistent LAN interface access.
-  hostNetwork: true
+  # Set to true on overlay-network CNIs (e.g. k3s/Flannel) that do not pass mDNS/Thread
+  # multicast into the pod network. See initContainers comment above for the recommended
+  # companion settings. Pair with pod.nodeSelector to pin the pod to a consistent LAN interface.
+  hostNetwork: false
 
 networking:
   service:
-    clusterIp:
+    websocket:
       enabled: true
-      ports:
-        ws:
-          port: 5580
-          protocol: TCP
-    loadBalancer:
-      enabled: false
+      type: LoadBalancer
       ports:
         ws:
           port: 5580
@@ -79,9 +88,6 @@ ingress:
         namespace: default
     hostnames:
       - matter.example.com
-    tls:
-      enabled: false
-      secretName: ""
 
   traefik:
     enabled: false
@@ -89,7 +95,7 @@ ingress:
       - websecure
     hostnames:
       - matter.example.com
-    middlewares: []
+    middlewares: []   # list of Traefik Middleware refs: [{name, namespace?}]
     tls:
       enabled: false
       secretName: ""
