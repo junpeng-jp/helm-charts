@@ -17,7 +17,7 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Enable hostNetwork when running on overlay-network CNIs (e.g. k3s/Flannel) 
+# Enable hostNetwork when running on overlay-network CNIs (e.g. k3s/Flannel)
 # that do not pass mDNS/Thread multicast into the pod network.
 initContainers: []
 
