@@ -18,7 +18,7 @@ spec:
     - match: Host(`{{ first .Values.ingress.traefik.hostnames }}`)
       kind: Rule
       services:
-        - name: {{ printf "%s-ws" (include "python-matter-server.fullname" .) }}
+        - name: {{ printf "%s-websocket" (include "python-matter-server.fullname" .) }}
           port: ws
       {{- with .Values.ingress.traefik.middlewares }}
       middlewares:
