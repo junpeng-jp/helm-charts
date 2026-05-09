@@ -1,0 +1,114 @@
+global:
+  image:
+    registry: docker.io
+    repository: eclipse-mosquitto
+    tag: "2.1.2-alpine"    # pin the version to deploy; does not fall back to Chart.AppVersion
+    digest: ""             # takes precedence over tag when set (e.g. sha256:abc123)
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+
+initContainers: []
+
+env: []
+
+secretVolumeMounts: []
+
+extraVolumes: []
+extraVolumeMounts: []
+
+# No HTTP health endpoint - probes omitted
+
+resources:
+  requests:
+    memory: 64Mi
+    cpu: 50m
+  limits:
+    memory: 256Mi
+
+podSecurityContext:
+  fsGroup: 1883
+  runAsUser: 1883
+  runAsGroup: 1883
+  runAsNonRoot: true
+  sysctls: []
+
+containerSecurityContext:
+  runAsUser: 1883
+  runAsGroup: 1883
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  privileged: false
+  capabilities:
+    drop: [ALL]
+
+pod:
+  annotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+networking:
+  service:
+    main:
+      enabled: true
+      type: ClusterIP
+      ports:
+        mqtt:
+          port: 1883
+          protocol: TCP
+        # MQTT over TLS - enable together with a TLS listener in mosquitto.conf
+        mqtt-tls:
+          port: 8883
+          protocol: TCP
+          enabled: false
+        # MQTT over WebSockets - enable together with a WebSocket listener in mosquitto.conf
+        mqtt-ws:
+          port: 9001
+          protocol: TCP
+          enabled: false
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+  labels: {}
+  existingClaim: ""     # mount an existing PVC instead of creating one; mutually exclusive with existingVolume
+  existingVolume: ""    # bind the VolumeClaimTemplate to a specific PV by name (StatefulSet only); mutually exclusive with existingClaim
+
+# Eclipse Mosquitto application configuration
+mosquitto:
+  initContainer:
+    image:
+      registry: docker.io
+      repository: busybox
+      tag: "1.37"
+      digest: ""
+      pullPolicy: IfNotPresent
+    tasks:
+      # fixPermissions - chowns /mosquitto/data and /mosquitto/log to the mosquitto uid/gid
+      # before the main container starts.
+      fixPermissions: true
+
+  # config - mosquitto.conf mounted to /mosquitto/config/mosquitto.conf (read-only).
+  # See: https://mosquitto.org/man/mosquitto-conf-5.html
+  config:
+    enabled: true
+    content: |
+      listener 1883
+      persistence true
+      persistence_location /mosquitto/data/
+      log_dest stdout

@@ -1,0 +1,10 @@
+global:
+  image:
+    tag: "2.1.2-alpine"
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 1Gi
+mosquitto:
+  config:
+    enabled: true

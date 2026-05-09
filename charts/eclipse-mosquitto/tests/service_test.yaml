@@ -1,0 +1,30 @@
+suite: Service
+templates:
+  - templates/service.yaml
+tests:
+  - it: renders a Service with mqtt port 1883
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-eclipse-mosquitto
+      - contains:
+          path: spec.ports
+          content:
+            name: mqtt
+            port: 1883
+            targetPort: mqtt
+            protocol: TCP
+
+  - it: includes mqtt-tls port when enabled
+    set:
+      networking.service.main.ports.mqtt-tls.enabled: true
+    asserts:
+      - contains:
+          path: spec.ports
+          content:
+            name: mqtt-tls
+            port: 8883
+            targetPort: mqtt-tls
+            protocol: TCP

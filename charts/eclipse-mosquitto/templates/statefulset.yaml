@@ -1,0 +1,168 @@
+{{- if and .Values.persistence.existingClaim .Values.persistence.existingVolume }}
+{{- fail "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one" }}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "eclipse-mosquitto.fullname" . }}
+  labels:
+    {{- include "eclipse-mosquitto.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "eclipse-mosquitto.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "eclipse-mosquitto.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "eclipse-mosquitto.selectorLabels" . | nindent 8 }}
+      {{- with .Values.pod.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "eclipse-mosquitto.serviceAccountName" . }}
+      {{- with .Values.global.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.mosquitto.initContainer.tasks.fixPermissions .Values.initContainers }}
+      initContainers:
+        {{- if .Values.mosquitto.initContainer.tasks.fixPermissions }}
+        - name: fix-permissions
+          image: {{ include "eclipse-mosquitto.initContainer.image" . }}
+          imagePullPolicy: {{ .Values.mosquitto.initContainer.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - chown -R {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }} /mosquitto/log{{ if .Values.persistence.enabled }} /mosquitto/data{{ end }}
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: log
+              mountPath: /mosquitto/log
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /mosquitto/data
+            {{- end }}
+        {{- end }}
+        {{- with .Values.initContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: eclipse-mosquitto
+          image: {{ include "eclipse-mosquitto.image" . }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            {{- range $svcName := keys .Values.networking.service | sortAlpha }}
+            {{- $svc := index $.Values.networking.service $svcName }}
+            {{- if $svc.enabled }}
+            {{- range $portName := keys $svc.ports | sortAlpha }}
+            {{- $port := index $svc.ports $portName }}
+            {{- if (default true $port.enabled) }}
+            - name: {{ $portName }}
+              containerPort: {{ $port.port }}
+              protocol: {{ $port.protocol }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # No HTTP health endpoint - probes omitted
+          {{- with .Values.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /mosquitto/data
+            {{- end }}
+            - name: log
+              mountPath: /mosquitto/log
+            {{- if .Values.mosquitto.config.enabled }}
+            - name: mosquitto-config
+              mountPath: /mosquitto/config/mosquitto.conf
+              subPath: mosquitto.conf
+              readOnly: true
+            {{- end }}
+            {{- range .Values.secretVolumeMounts }}
+            - name: {{ .name | default .secretName }}
+              mountPath: {{ .mountPath | default (printf "/run/secrets/%s" .secretName) }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: log
+          emptyDir: {}
+        {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+        {{- end }}
+        {{- if .Values.mosquitto.config.enabled }}
+        - name: mosquitto-config
+          configMap:
+            name: {{ include "eclipse-mosquitto.fullname" . }}-config
+        {{- end }}
+        {{- range .Values.secretVolumeMounts }}
+        - name: {{ .name | default .secretName }}
+          secret:
+            secretName: {{ .secretName }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.pod.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pod.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pod.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        {{- with .Values.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        labels:
+          {{- merge (include "eclipse-mosquitto.labels" . | fromYaml) (.Values.persistence.labels | default dict) | toYaml | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+        {{- if .Values.persistence.existingVolume }}
+        volumeName: {{ .Values.persistence.existingVolume }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

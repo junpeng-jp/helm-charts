@@ -1,0 +1,21 @@
+suite: ConfigMap
+templates:
+  - templates/configmap.yaml
+tests:
+  - it: does not render when mosquitto.config is disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders ConfigMap with mosquitto.conf when enabled
+    set:
+      mosquitto.config.enabled: true
+      mosquitto.config.content: "listener 1883\nallow_anonymous true\n"
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-eclipse-mosquitto-config
+      - isNotNull:
+          path: data["mosquitto.conf"]
