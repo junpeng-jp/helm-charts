@@ -1,5 +1,18 @@
 apiVersion: v1
 entries:
+  eclipse-mosquitto:
+  - apiVersion: v2
+    appVersion: 2.1.2
+    created: "2026-05-09T16:14:25.609814948Z"
+    description: A Helm chart for Eclipse Mosquitto MQTT broker
+    digest: fc921e313a935826832b91a1414468ffe4e48cdaaccbc9c6dc2a3617419a8f57
+    maintainers:
+    - name: junpeng-jp
+    name: eclipse-mosquitto
+    type: application
+    urls:
+    - https://github.com/junpeng-jp/helm-charts/releases/download/eclipse-mosquitto-0.1.0/eclipse-mosquitto-0.1.0.tgz
+    version: 0.1.0
   home-assistant:
   - apiVersion: v2
     created: "2026-05-09T06:36:20.409988947Z"
@@ -173,4 +186,4 @@ entries:
     urls:
     - https://github.com/junpeng-jp/helm-charts/releases/download/technitium-0.1.1/technitium-0.1.1.tgz
     version: 0.1.1
-generated: "2026-05-09T07:46:49.274475966Z"
+generated: "2026-05-09T16:14:25.609844332Z"
