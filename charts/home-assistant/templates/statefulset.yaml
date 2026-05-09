@@ -210,7 +210,7 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         labels:
-          {{- merge (include "home-assistant.labels" . | fromYaml) (.Values.persistence.labels | default dict) | toYaml | nindent 10 }}
+          {{- merge (include "home-assistant.labels" . | fromYaml) .Values.persistence.labels | toYaml | nindent 10 }}
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}

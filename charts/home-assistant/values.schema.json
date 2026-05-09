@@ -103,7 +103,7 @@
       "properties": {
         "service": {
           "type": "object",
-          "required": ["main"],
+          "required": ["app"],
           "additionalProperties": {
             "type": "object",
             "additionalProperties": false,

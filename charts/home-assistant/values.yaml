@@ -70,7 +70,7 @@ pod:
 
 networking:
   service:
-    main:
+    app:
       enabled: true
       type: ClusterIP
       ports:

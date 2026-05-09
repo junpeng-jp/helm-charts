@@ -1,5 +1,5 @@
-{{- if .Values.networking.service.main.enabled }}
-{{- $port := (index .Values.networking.service.main.ports "http").port -}}
+{{- if .Values.networking.service.app.enabled }}
+{{- $port := (index .Values.networking.service.app.ports "http").port -}}
 apiVersion: v1
 kind: Pod
 metadata:
