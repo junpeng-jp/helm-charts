@@ -1,0 +1,11 @@
+{{- if .Values.mosquitto.config.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "eclipse-mosquitto.fullname" . }}-config
+  labels:
+    {{- include "eclipse-mosquitto.labels" . | nindent 4 }}
+data:
+  mosquitto.conf: |
+    {{- .Values.mosquitto.config.content | nindent 4 }}
+{{- end }}

@@ -1,0 +1,111 @@
+suite: StatefulSet
+templates:
+  - templates/statefulset.yaml
+tests:
+  - it: renders a StatefulSet with realistic defaults
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-eclipse-mosquitto
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/eclipse-mosquitto:2.1.2-alpine
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.name
+          value: data
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: data
+            mountPath: /mosquitto/data
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: log
+            mountPath: /mosquitto/log
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: fix-permissions
+
+  - it: uses digest over tag when both are set
+    set:
+      global.image.tag: "2.1.2-alpine"
+      global.image.digest: "sha256:abc123"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/eclipse-mosquitto@sha256:abc123
+
+  - it: mounts existing PVC as volume instead of creating a VolumeClaimTemplate
+    set:
+      persistence.existingClaim: my-existing-pvc
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            persistentVolumeClaim:
+              claimName: my-existing-pvc
+
+  - it: mounts mosquitto.conf via subPath when mosquitto.config is enabled
+    set:
+      mosquitto.config.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mosquitto-config
+            configMap:
+              name: RELEASE-NAME-eclipse-mosquitto-config
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: mosquitto-config
+            mountPath: /mosquitto/config/mosquitto.conf
+            subPath: mosquitto.conf
+            readOnly: true
+
+  - it: renders fix-permissions init container by default
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: fix-permissions
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: docker.io/busybox:1.37
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.runAsUser
+          value: 0
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: log
+            mountPath: /mosquitto/log
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: data
+            mountPath: /mosquitto/data
+
+  - it: omits fix-permissions init container when fixPermissions is disabled
+    set:
+      mosquitto.initContainer.tasks.fixPermissions: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+
+  - it: fails when both existingClaim and existingVolume are set
+    set:
+      persistence.existingClaim: my-pvc
+      persistence.existingVolume: my-pv
+    asserts:
+      - failedTemplate:
+          errorMessage: "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one"

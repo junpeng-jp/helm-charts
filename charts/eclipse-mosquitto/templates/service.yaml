@@ -1,0 +1,26 @@
+{{- range $svcName := keys .Values.networking.service | sortAlpha }}
+{{- $svc := index $.Values.networking.service $svcName }}
+{{- if $svc.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ if eq $svcName "main" }}{{ include "eclipse-mosquitto.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "eclipse-mosquitto.fullname" $) $svcName }}{{ end }}
+  labels:
+    {{- include "eclipse-mosquitto.labels" $ | nindent 4 }}
+spec:
+  type: {{ $svc.type }}
+  selector:
+    {{- include "eclipse-mosquitto.selectorLabels" $ | nindent 4 }}
+  ports:
+    {{- range $portName := keys $svc.ports | sortAlpha }}
+    {{- $port := index $svc.ports $portName }}
+    {{- if (default true $port.enabled) }}
+    - name: {{ $portName }}
+      port: {{ $port.port }}
+      targetPort: {{ $portName }}
+      protocol: {{ $port.protocol }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: eclipse-mosquitto
+description: A Helm chart for Eclipse Mosquitto MQTT broker
+type: application
+version: 0.1.0
+appVersion: "2.1.2"
+maintainers:
+  - name: junpeng-jp

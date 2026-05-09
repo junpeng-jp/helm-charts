@@ -557,10 +557,19 @@ persistence:
   size: 5Gi
   annotations: {}
   labels: {}
-  existingClaim: ""       # when set, skips PVC creation and uses this claim
+  existingClaim: ""       # mount an existing PVC instead of creating one; mutually exclusive with existingVolume
+  existingVolume: ""      # (StatefulSet only) bind the VolumeClaimTemplate to a specific PV by name. Mutually exclusive with existingClaim
 ```
 
 When `existingClaim` is non-empty, the chart skips the `volumeClaimTemplates` entry (for StatefulSets) or PVC manifest (for Deployments) and references the named claim directly.
+
+When `existingVolume` is non-empty (StatefulSet charts only), the `volumeClaimTemplates` entry sets `volumeName` to bind the claim to a specific pre-provisioned PV. This is mutually exclusive with `existingClaim`; charts must enforce this with a template-level `fail` guard:
+
+```
+{{- if and .Values.persistence.existingClaim .Values.persistence.existingVolume }}
+{{- fail "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one" }}
+{{- end }}
+```
 
 When rendering labels on a VolumeClaimTemplate, combine standard chart labels with user-supplied `persistence.labels` using Sprig `merge` to avoid duplicate YAML keys. Standard labels win on conflicts:
 
