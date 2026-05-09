@@ -22,65 +22,27 @@ tests:
           value: RELEASE-NAME-home-assistant-config
         documentIndex: 0
 
-  - it: configuration.yaml contains homeassistant, default_config, http, and logger blocks
+  - it: configuration.yaml contains the verbatim content from homeAssistant.config.content
     set:
       homeAssistant.config.enabled: true
-      homeAssistant.config.name: "My Home"
+      homeAssistant.config.content: |
+        homeassistant:
+          name: My Home
+        default_config:
+        recorder:
+          db_url: !secret db_url
     asserts:
       - matchRegex:
           path: data["configuration.yaml"]
-          pattern: "homeassistant:"
+          pattern: "name: My Home"
         documentIndex: 0
       - matchRegex:
           path: data["configuration.yaml"]
-          pattern: 'name: "My Home"'
+          pattern: "recorder:"
         documentIndex: 0
       - matchRegex:
           path: data["configuration.yaml"]
-          pattern: "default_config:"
-        documentIndex: 0
-      - matchRegex:
-          path: data["configuration.yaml"]
-          pattern: "http:"
-        documentIndex: 0
-      - matchRegex:
-          path: data["configuration.yaml"]
-          pattern: "logger:"
-        documentIndex: 0
-
-  - it: includes trusted proxies in http block
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.http.trustedProxies:
-        - 172.16.0.0/12
-    asserts:
-      - matchRegex:
-          path: data["configuration.yaml"]
-          pattern: "172.16.0.0/12"
-        documentIndex: 0
-
-  - it: does not include packages directive when homeAssistant.packages is disabled
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.packages.enabled: false
-    asserts:
-      - notMatchRegex:
-          path: data["configuration.yaml"]
-          pattern: "include_dir_named"
-        documentIndex: 0
-
-  - it: includes packages directive in config when homeAssistant.packages is enabled
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.packages.enabled: true
-      homeAssistant.packages.files:
-        network.yaml: |
-          sensor:
-            - platform: ping
-    asserts:
-      - matchRegex:
-          path: data["configuration.yaml"]
-          pattern: "include_dir_named packages"
+          pattern: "db_url: !secret db_url"
         documentIndex: 0
 
   - it: renders packages ConfigMap with correct name when enabled

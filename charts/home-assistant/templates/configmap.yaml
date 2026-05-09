@@ -7,7 +7,7 @@ metadata:
     {{- include "home-assistant.labels" . | nindent 4 }}
 data:
   configuration.yaml: |
-    {{- include "home-assistant.configYaml" . | nindent 4 }}
+    {{- .Values.homeAssistant.config.content | nindent 4 }}
 {{- end }}
 {{- if .Values.homeAssistant.packages.enabled }}
 ---
