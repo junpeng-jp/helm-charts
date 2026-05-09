@@ -110,4 +110,3 @@ persistence:
   annotations: {}
   labels: {}
   existingClaim: ""
-
