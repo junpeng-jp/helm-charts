@@ -46,21 +46,14 @@
         }
       }
     },
-    "secretVolumeMounts": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["secretName"],
-        "additionalProperties": false,
-        "properties": {
-          "secretName": { "type": "string" },
-          "mountPath":  { "type": "string" },
-          "name":       { "type": "string", "description": "Volume name override. Defaults to secretName. Required when the same secretName appears more than once to avoid duplicate volume names." }
-        }
-      }
-    },
     "extraVolumes":      { "type": "array" },
     "extraVolumeMounts": { "type": "array" },
+    "startupProbe": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
     "livenessProbe": {
       "type": "object",
       "properties": {
@@ -93,8 +86,6 @@
         }
       }
     },
-    "podSecurityContext":       { "type": "object" },
-    "containerSecurityContext": { "type": "object" },
     "pod": {
       "type": "object",
       "additionalProperties": false,
@@ -112,7 +103,7 @@
       "properties": {
         "service": {
           "type": "object",
-          "required": ["main"],
+          "required": ["app"],
           "additionalProperties": {
             "type": "object",
             "additionalProperties": false,
@@ -195,7 +186,8 @@
         "size":          { "type": "string" },
         "annotations":   { "type": "object" },
         "labels":        { "type": "object" },
-        "existingClaim": { "type": "string" }
+        "existingClaim":  { "type": "string" },
+        "existingVolume": { "type": "string" }
       }
     },
     "monitor": {
@@ -220,28 +212,42 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "initContainer": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "registry":   { "type": "string" },
+                "repository": { "type": "string" },
+                "tag":        { "type": "string" },
+                "digest":     { "type": "string" },
+                "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+              }
+            },
+            "tasks": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "setupHACS":      { "type": "boolean" },
+                "createSecretsYAML": { "type": "string" }
+              }
+            }
+          }
+        },
         "config": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "name":    { "type": "string" },
-            "http": {
+            "content": { "type": "string" },
+            "checkConfig": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "useXForwardedFor": { "type": "boolean" },
-                "trustedProxies":   { "type": "array", "items": { "type": "string" } }
-              }
-            },
-            "logger": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "default": {
-                  "type": "string",
-                  "enum": ["debug", "info", "warning", "error", "critical", "fatal"]
-                }
+                "enabled": { "type": "boolean" }
               }
             }
           }
@@ -254,18 +260,6 @@
             "files": {
               "type": "object",
               "additionalProperties": { "type": "string" }
-            }
-          }
-        },
-        "usbDevices": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["hostPath", "mountPath"],
-            "properties": {
-              "hostPath":  { "type": "string" },
-              "mountPath": { "type": "string" }
             }
           }
         }

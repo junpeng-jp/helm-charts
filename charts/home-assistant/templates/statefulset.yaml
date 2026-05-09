@@ -1,3 +1,6 @@
+{{- if and .Values.persistence.existingClaim .Values.persistence.existingVolume }}
+{{- fail "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one" }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -24,19 +27,79 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
       serviceAccountName: {{ include "home-assistant.serviceAccountName" . }}
-      {{- with .Values.podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       {{- with .Values.global.image.pullSecrets }}
       imagePullSecrets:
         {{- range . }}
         - name: {{ . }}
         {{- end }}
       {{- end }}
-      {{- with .Values.initContainers }}
+      {{- if or .Values.initContainers .Values.homeAssistant.initContainer.tasks.setupHACS .Values.homeAssistant.initContainer.tasks.createSecretsYAML (and .Values.homeAssistant.config.enabled .Values.homeAssistant.config.checkConfig.enabled) }}
       initContainers:
+        {{- with .Values.initContainers }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.homeAssistant.initContainer.tasks.setupHACS }}
+        - name: install-hacs
+          image: docker.io/alpine:3.21
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              URL="https://github.com/hacs/integration/releases/latest/download/hacs.zip"
+              if [ ! -d /config/custom_components/hacs ]; then
+                apk add -q --no-progress unzip
+                mkdir -p /config/custom_components/hacs
+                wget -q -O /tmp/hacs.zip "$URL"
+                unzip -q /tmp/hacs.zip -d /config/custom_components/hacs
+              fi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        {{- end }}
+        {{- if .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
+        - name: generate-secrets-yaml
+          image: {{ include "home-assistant.initContainer.image" . }}
+          imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              out=/config/secrets.yaml
+              : > "$out"
+              for f in /run/secrets/{{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}/*; do
+                [ -f "$f" ] || continue
+                printf '%s: %s\n' "$(basename "$f")" "$(cat "$f")" >> "$out"
+              done
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: {{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
+              mountPath: /run/secrets/{{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
+              readOnly: true
+        {{- end }}
+        {{- if and .Values.homeAssistant.config.enabled .Values.homeAssistant.config.checkConfig.enabled }}
+        - name: check-config
+          image: {{ include "home-assistant.image" . }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - homeassistant
+            - --script
+            - check_config
+            - --config
+            - /config
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: ha-config
+              mountPath: /config/configuration.yaml
+              subPath: configuration.yaml
+              readOnly: true
+        {{- end }}
       {{- end }}
       containers:
         - name: home-assistant
@@ -56,13 +119,13 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
-          {{- with .Values.containerSecurityContext }}
-          securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           {{- with .Values.env }}
           env:
             {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            {{- omit .Values.startupProbe "enabled" | toYaml | nindent 12 }}
           {{- end }}
           {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
@@ -88,13 +151,9 @@ spec:
               mountPath: /config/packages
               readOnly: true
             {{- end }}
-            {{- range $i, $dev := .Values.homeAssistant.usbDevices }}
-            - name: usb-device-{{ $i }}
-              mountPath: {{ $dev.mountPath }}
-            {{- end }}
-            {{- range .Values.secretVolumeMounts }}
-            - name: {{ default .secretName .name }}
-              mountPath: {{ .mountPath | default (printf "/run/secrets/%s" .secretName) }}
+            {{- if .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
+            - name: {{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
+              mountPath: /run/secrets/{{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
               readOnly: true
             {{- end }}
             {{- with .Values.extraVolumeMounts }}
@@ -104,7 +163,7 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.homeAssistant.config.enabled .Values.homeAssistant.packages.enabled .Values.homeAssistant.usbDevices .Values.secretVolumeMounts .Values.extraVolumes }}
+      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.homeAssistant.config.enabled .Values.homeAssistant.packages.enabled .Values.homeAssistant.initContainer.tasks.createSecretsYAML .Values.extraVolumes }}
       volumes:
         {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
         - name: config
@@ -121,15 +180,10 @@ spec:
           configMap:
             name: {{ include "home-assistant.fullname" . }}-packages
         {{- end }}
-        {{- range $i, $dev := .Values.homeAssistant.usbDevices }}
-        - name: usb-device-{{ $i }}
-          hostPath:
-            path: {{ $dev.hostPath }}
-        {{- end }}
-        {{- range .Values.secretVolumeMounts }}
-        - name: {{ default .secretName .name }}
+        {{- if .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
+        - name: {{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
           secret:
-            secretName: {{ .secretName }}
+            secretName: {{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
         {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
@@ -156,12 +210,15 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         labels:
-          {{- merge (include "home-assistant.labels" . | fromYaml) (.Values.persistence.labels | default dict) | toYaml | nindent 10 }}
+          {{- merge (include "home-assistant.labels" . | fromYaml) .Values.persistence.labels | toYaml | nindent 10 }}
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}
         {{- if .Values.persistence.storageClass }}
         storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+        {{- if .Values.persistence.existingVolume }}
+        volumeName: {{ .Values.persistence.existingVolume }}
         {{- end }}
         resources:
           requests:

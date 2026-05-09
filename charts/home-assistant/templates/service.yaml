@@ -5,7 +5,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ if eq $svcName "main" }}{{ include "home-assistant.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "home-assistant.fullname" $) $svcName }}{{ end }}
+  name: {{ if eq $svcName "app" }}{{ include "home-assistant.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "home-assistant.fullname" $) $svcName }}{{ end }}
   labels:
     {{- include "home-assistant.labels" $ | nindent 4 }}
 spec:
