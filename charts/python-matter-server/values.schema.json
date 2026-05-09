@@ -85,7 +85,8 @@
         "nodeSelector":  { "type": "object" },
         "tolerations":   { "type": "array" },
         "affinity":      { "type": "object" },
-        "hostNetwork":   { "type": "boolean" }
+        "hostNetwork":   { "type": "boolean" },
+        "dnsPolicy":     { "type": "string" }
       }
     },
     "networking": {
@@ -179,24 +180,6 @@
         "annotations":   { "type": "object" },
         "labels":        { "type": "object" },
         "existingClaim": { "type": "string" }
-      }
-    },
-    "monitor": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "metric": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled":       { "type": "boolean" },
-            "path":          { "type": "string" },
-            "port":          { "type": "string" },
-            "interval":      { "type": "string" },
-            "scrapeTimeout": { "type": "string" },
-            "labels":        { "type": "object" }
-          }
-        }
       }
     }
   }

@@ -19,7 +19,9 @@ spec:
       {{- end }}
     spec:
       hostNetwork: {{ .Values.pod.hostNetwork }}
-      {{- if .Values.pod.hostNetwork }}
+      {{- if .Values.pod.dnsPolicy }}
+      dnsPolicy: {{ .Values.pod.dnsPolicy }}
+      {{- else if .Values.pod.hostNetwork }}
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
       serviceAccountName: {{ include "python-matter-server.serviceAccountName" . }}
