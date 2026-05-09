@@ -17,8 +17,6 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Enable hostNetwork when running on overlay-network CNIs (e.g. k3s/Flannel)
-# that do not pass mDNS/Thread multicast into the pod network.
 initContainers: []
 
 env:
@@ -27,10 +25,22 @@ env:
 
 secretVolumeMounts: []
 
+# Mount USB serial dongles (e.g. Sonoff Zigbee/Thread) or other host devices into the container.
+# Use hostPath volumes with type: CharDevice for serial ports.
+# Also set podSecurityContext.supplementalGroups: [20] to grant dialout GID access.
+# Example:
+# extraVolumes:
+#   - name: sonoff-dongle
+#     hostPath:
+#       path: /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_...
+#       type: CharDevice
+# extraVolumeMounts:
+#   - name: sonoff-dongle
+#     mountPath: /dev/ttyUSB0
 extraVolumes: []
 extraVolumeMounts: []
 
-# No HTTP health endpoint — probes omitted (WebSocket-only server on port 5580)
+# No HTTP health endpoint - probes omitted (WebSocket-only server on port 5580)
 
 resources:
   requests:
@@ -38,7 +48,7 @@ resources:
     cpu: 50m
   limits:
     memory: 512Mi
-    # cpu intentionally omitted — matter commissioning can spike briefly
+    # cpu intentionally omitted - matter commissioning can spike briefly
 
 podSecurityContext: {}
 
@@ -52,10 +62,13 @@ pod:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # Set to true on overlay-network CNIs (e.g. k3s/Flannel) that do not pass mDNS/Thread
-  # multicast into the pod network. See initContainers comment above for the recommended
-  # companion settings. Pair with pod.nodeSelector to pin the pod to a consistent LAN interface.
-  hostNetwork: false
+  # Required on overlay-network CNIs (e.g. Flannel) that do not pass mDNS/Thread
+  # multicast into the pod network. Pair with pod.nodeSelector to pin the pod to a consistent
+  # LAN interface. Set to false only if your CNI handles multicast natively.
+  hostNetwork: true
+  # dnsPolicy is automatically set to ClusterFirstWithHostNet when hostNetwork is true.
+  # Override here if your cluster uses a custom DNS setup.
+  dnsPolicy: ""
 
 networking:
   service:
@@ -98,11 +111,3 @@ persistence:
   labels: {}
   existingClaim: ""
 
-monitor:
-  metric:
-    enabled: false
-    path: /metrics
-    port: ws
-    interval: 30s
-    scrapeTimeout: 10s
-    labels: {}
