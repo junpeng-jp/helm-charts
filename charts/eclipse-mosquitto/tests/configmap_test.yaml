@@ -3,6 +3,8 @@ templates:
   - templates/configmap.yaml
 tests:
   - it: does not render when mosquitto.config is disabled
+    set:
+      mosquitto.config.enabled: false
     asserts:
       - hasDocuments:
           count: 0
