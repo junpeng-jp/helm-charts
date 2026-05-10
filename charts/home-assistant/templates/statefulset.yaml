@@ -151,6 +151,11 @@ spec:
               mountPath: /config/packages
               readOnly: true
             {{- end }}
+            {{- if .Values.homeAssistant.themes.enabled }}
+            - name: ha-themes
+              mountPath: /config/themes
+              readOnly: true
+            {{- end }}
             {{- if .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
             - name: {{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
               mountPath: /run/secrets/{{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
@@ -163,7 +168,7 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.homeAssistant.config.enabled .Values.homeAssistant.packages.enabled .Values.homeAssistant.initContainer.tasks.createSecretsYAML .Values.extraVolumes }}
+      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.homeAssistant.config.enabled .Values.homeAssistant.packages.enabled .Values.homeAssistant.themes.enabled .Values.homeAssistant.initContainer.tasks.createSecretsYAML .Values.extraVolumes }}
       volumes:
         {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
         - name: config
@@ -173,12 +178,17 @@ spec:
         {{- if .Values.homeAssistant.config.enabled }}
         - name: ha-config
           configMap:
-            name: {{ include "home-assistant.fullname" . }}-config
+            name: {{ .Values.homeAssistant.config.existingConfigMap | default (printf "%s-config" (include "home-assistant.fullname" .)) }}
         {{- end }}
         {{- if .Values.homeAssistant.packages.enabled }}
         - name: ha-packages
           configMap:
-            name: {{ include "home-assistant.fullname" . }}-packages
+            name: {{ .Values.homeAssistant.packages.existingConfigMap | default (printf "%s-packages" (include "home-assistant.fullname" .)) }}
+        {{- end }}
+        {{- if .Values.homeAssistant.themes.enabled }}
+        - name: ha-themes
+          configMap:
+            name: {{ .Values.homeAssistant.themes.existingConfigMap | default (printf "%s-themes" (include "home-assistant.fullname" .)) }}
         {{- end }}
         {{- if .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}
         - name: {{ .Values.homeAssistant.initContainer.tasks.createSecretsYAML }}

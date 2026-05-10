@@ -241,8 +241,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "content": { "type": "string" },
+            "enabled":           { "type": "boolean" },
+            "existingConfigMap": { "type": "string" },
             "checkConfig": {
               "type": "object",
               "additionalProperties": false,
@@ -256,11 +256,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "files": {
-              "type": "object",
-              "additionalProperties": { "type": "string" }
-            }
+            "enabled":           { "type": "boolean" },
+            "existingConfigMap": { "type": "string" }
+          }
+        },
+        "themes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled":           { "type": "boolean" },
+            "existingConfigMap": { "type": "string" }
           }
         }
       }

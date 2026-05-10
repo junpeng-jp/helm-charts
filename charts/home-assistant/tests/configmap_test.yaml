@@ -2,18 +2,14 @@ suite: ConfigMap
 templates:
   - templates/configmap.yaml
 tests:
-  - it: does not render when homeAssistant.config and homeAssistant.packages are disabled
-    set:
-      homeAssistant.config.enabled: false
-      homeAssistant.packages.enabled: false
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: renders config ConfigMap with correct name when enabled
+  - it: renders all three chart-managed ConfigMaps when all enabled with no existingConfigMap
     set:
       homeAssistant.config.enabled: true
+      homeAssistant.packages.enabled: true
+      homeAssistant.themes.enabled: true
     asserts:
+      - hasDocuments:
+          count: 3
       - isKind:
           of: ConfigMap
         documentIndex: 0
@@ -21,74 +17,53 @@ tests:
           path: metadata.name
           value: RELEASE-NAME-home-assistant-config
         documentIndex: 0
-
-  - it: configuration.yaml contains the verbatim content from homeAssistant.config.content
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.content: |
-        homeassistant:
-          name: My Home
-        default_config:
-        recorder:
-          db_url: !secret db_url
-    asserts:
-      - matchRegex:
-          path: data["configuration.yaml"]
-          pattern: "name: My Home"
-        documentIndex: 0
-      - matchRegex:
-          path: data["configuration.yaml"]
-          pattern: "recorder:"
-        documentIndex: 0
-      - matchRegex:
-          path: data["configuration.yaml"]
-          pattern: "db_url: !secret db_url"
-        documentIndex: 0
-
-  - it: renders packages ConfigMap with correct name when enabled
-    set:
-      homeAssistant.packages.enabled: true
-    asserts:
       - isKind:
           of: ConfigMap
-        documentIndex: 0
+        documentIndex: 1
       - equal:
           path: metadata.name
           value: RELEASE-NAME-home-assistant-packages
-        documentIndex: 0
+        documentIndex: 1
+      - isKind:
+          of: ConfigMap
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant-themes
+        documentIndex: 2
 
-  - it: renders package files in packages ConfigMap
+  - it: does not render when all three are disabled
     set:
-      homeAssistant.packages.enabled: true
-      homeAssistant.packages.files:
-        network.yaml: |
-          sensor:
-            - platform: ping
+      homeAssistant.config.enabled: false
+      homeAssistant.packages.enabled: false
+      homeAssistant.themes.enabled: false
     asserts:
-      - isNotNull:
-          path: data["network.yaml"]
-        documentIndex: 0
+      - hasDocuments:
+          count: 0
 
-  - it: renders both ConfigMaps when config and packages are enabled
+  - it: does not render chart-managed ConfigMap when existingConfigMap is set
     set:
       homeAssistant.config.enabled: true
+      homeAssistant.config.existingConfigMap: my-ha-config
       homeAssistant.packages.enabled: true
+      homeAssistant.themes.enabled: true
     asserts:
       - hasDocuments:
           count: 2
       - equal:
           path: metadata.name
-          value: RELEASE-NAME-home-assistant-config
+          value: RELEASE-NAME-home-assistant-packages
         documentIndex: 0
       - equal:
           path: metadata.name
-          value: RELEASE-NAME-home-assistant-packages
+          value: RELEASE-NAME-home-assistant-themes
         documentIndex: 1
 
   - it: uses fullnameOverride in ConfigMap names
     set:
       homeAssistant.config.enabled: true
       homeAssistant.packages.enabled: true
+      homeAssistant.themes.enabled: true
       fullnameOverride: my-ha
     asserts:
       - equal:
@@ -99,3 +74,7 @@ tests:
           path: metadata.name
           value: my-ha-packages
         documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: my-ha-themes
+        documentIndex: 2

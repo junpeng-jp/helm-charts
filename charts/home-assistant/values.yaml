@@ -149,62 +149,82 @@ homeAssistant:
       setupHACS: false
 
   # config - mounted to /config/configuration.yaml (read-only).
-  # Provide the complete configuration.yaml content as a literal YAML string.
   # See: https://www.home-assistant.io/docs/configuration/
+  #
+  # Example ConfigMap (single key "configuration.yaml"):
+  #
+  #   apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: my-home-assistant-config
+  #   data:
+  #     configuration.yaml: |
+  #       homeassistant:
+  #         name: Home
+  #         latitude: 37.7749
+  #         longitude: -122.4194
+  #         unit_system: metric
+  #         time_zone: America/Los_Angeles
+  #       http:
+  #         use_x_forwarded_for: true
+  #         trusted_proxies:
+  #           - 10.0.0.0/8
   config:
     enabled: false
+    existingConfigMap: ""
     checkConfig:
       enabled: false
-    content: |
-      homeassistant:
-        name: Home
-        # Load packages from /config/packages/ directory (one file per logical group).
-        # Each package file can contain automations, scripts, sensors, etc.
-        # See: https://www.home-assistant.io/docs/configuration/packages/
-        packages: !include_dir_named packages
-
-      # Loads default integrations. Includes: analytics, automation, backup, bluetooth,
-      # calendar, cloud, config, conversation, counter, dhcp, energy, frontend, hardware,
-      # history, homeassistant_alerts, image_upload, input_boolean, input_button,
-      # input_datetime, input_number, input_select, input_text, logbook, logger,
-      # map, media_source, mobile_app, my, network, person, python_script, recorder,
-      # schedule, script, ssdp, sun, tag, template, timer, todo, usb, webhook,
-      # zeroconf, zone
-      # See: https://www.home-assistant.io/integrations/default_config/
-      default_config:
-
-      # Required when HA sits behind a reverse proxy (Traefik, nginx, Gateway API).
-      # Without trustedProxies, HA will reject all forwarded requests.
-      http:
-        use_x_forwarded_for: true
-        trusted_proxies:
-          - 10.0.0.0/8
-          - 172.16.0.0/12
-          - 192.168.0.0/16
-
-      # Suppress noisy integrations at WARNING
-        default: warning
-        # logs:
-        #   homeassistant.components.zha: debug
-        #   homeassistant.components.mqtt: info
-
-      # Recorder controls which entities are stored in the database and for how long.
-      # See: https://www.home-assistant.io/integrations/recorder/
-      recorder:
-        purge_keep_days: 30
-        # db_url: sqlite:////config/home-assistant_v2.db   # can swap for PostgreSQL/MariaDB
 
   # packages - each file is mounted into /config/packages/ (read-only).
   # Packages can include: automation, script, sensor, binary_sensor,
   # input_boolean, input_number, input_select, input_text, group, etc.
   # See: https://www.home-assistant.io/docs/configuration/packages/
+  #
+  # Example ConfigMap (each key becomes a file under /config/packages/):
+  #
+  #   apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: my-home-assistant-packages
+  #   data:
+  #     lights.yaml: |
+  #       automation:
+  #         - alias: Turn on lights at sunset
+  #           trigger:
+  #             platform: sun
+  #             event: sunset
+  #           action:
+  #             service: light.turn_on
+  #             target:
+  #               area_id: living_room
+  #     climate.yaml: |
+  #       input_number:
+  #         target_temp:
+  #           name: Target Temperature
+  #           min: 15
+  #           max: 30
+  #           step: 0.5
   packages:
     enabled: false
-    files: {}
-    # Example:
-    # files:
-    #   network.yaml: |
-    #     sensor:
-    #       - platform: ping
-    #         host: 192.168.1.1
-    #         name: Router
+    existingConfigMap: ""
+
+  # themes - each file is mounted into /config/themes/ (read-only).
+  # See: https://www.home-assistant.io/integrations/frontend/#defining-themes
+  #
+  # Example ConfigMap (each key becomes a file under /config/themes/):
+  #
+  #   apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: my-home-assistant-themes
+  #   data:
+  #     dark_mode.yaml: |
+  #       dark_mode:
+  #         primary-color: "#03a9f4"
+  #         accent-color: "#ff9800"
+  #         primary-background-color: "#111111"
+  #         card-background-color: "#1c1c1c"
+  #         primary-text-color: "#e1e1e1"
+  themes:
+    enabled: false
+    existingConfigMap: ""

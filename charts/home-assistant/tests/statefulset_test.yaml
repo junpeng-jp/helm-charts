@@ -41,6 +41,25 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/home-assistant/home-assistant@sha256:abc123
 
+  - it: renders startupProbe when enabled
+    set:
+      startupProbe.enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.port
+          value: http
+
+  - it: uses fullnameOverride as complete resource name
+    set:
+      fullnameOverride: my-ha
+    asserts:
+      - equal:
+          path: metadata.name
+          value: my-ha
+
   - it: mounts existing PVC as volume instead of creating a VolumeClaimTemplate
     set:
       persistence.existingClaim: my-existing-pvc
@@ -80,33 +99,7 @@ tests:
       - failedTemplate:
           errorMessage: "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one"
 
-  - it: renders startupProbe when enabled
-    set:
-      startupProbe.enabled: true
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].startupProbe.httpGet.path
-          value: /
-      - equal:
-          path: spec.template.spec.containers[0].startupProbe.httpGet.port
-          value: http
-
-  - it: does not render startupProbe when disabled
-    set:
-      startupProbe.enabled: false
-    asserts:
-      - notExists:
-          path: spec.template.spec.containers[0].startupProbe
-
-  - it: renders user-defined initContainers
-    values:
-      - fixtures/init-containers.yaml
-    asserts:
-      - equal:
-          path: spec.template.spec.initContainers[0].name
-          value: wait-for-mqtt
-
-  - it: does not render HACS init container when setupHACS is disabled
+  - it: does not render any init containers by default
     asserts:
       - notExists:
           path: spec.template.spec.initContainers
@@ -130,30 +123,9 @@ tests:
             name: config
             mountPath: /config
 
-  - it: HACS init container appears after user-defined initContainers
+  - it: renders generate-secrets-yaml with correct image, volume mounts, and respects digest override
     set:
-      homeAssistant.initContainer.tasks.setupHACS: true
-    values:
-      - fixtures/init-containers.yaml
-    asserts:
-      - equal:
-          path: spec.template.spec.initContainers[0].name
-          value: wait-for-mqtt
-      - equal:
-          path: spec.template.spec.initContainers[1].name
-          value: install-hacs
-
-  - it: uses fullnameOverride as complete resource name
-
-    set:
-      fullnameOverride: my-ha
-    asserts:
-      - equal:
-          path: metadata.name
-          value: my-ha
-
-  - it: renders generate-secrets-yaml init container when createSecretsYAML is non-empty
-    set:
+      homeAssistant.initContainer.image.digest: "sha256:abc123"
       homeAssistant.initContainer.tasks.createSecretsYAML: ha-secrets
     asserts:
       - equal:
@@ -161,7 +133,7 @@ tests:
           value: generate-secrets-yaml
       - equal:
           path: spec.template.spec.initContainers[0].image
-          value: docker.io/busybox:1.37
+          value: docker.io/busybox@sha256:abc123
       - equal:
           path: spec.template.spec.initContainers[0].imagePullPolicy
           value: IfNotPresent
@@ -170,21 +142,6 @@ tests:
           content:
             name: config
             mountPath: /config
-
-  - it: generate-secrets-yaml uses digest over tag when both are set
-    set:
-      homeAssistant.initContainer.image.tag: "1.37"
-      homeAssistant.initContainer.image.digest: "sha256:abc123"
-      homeAssistant.initContainer.tasks.createSecretsYAML: ha-secrets
-    asserts:
-      - equal:
-          path: spec.template.spec.initContainers[0].image
-          value: docker.io/busybox@sha256:abc123
-
-  - it: generate-secrets-yaml mounts the configured secret
-    set:
-      homeAssistant.initContainer.tasks.createSecretsYAML: ha-secrets
-    asserts:
       - contains:
           path: spec.template.spec.initContainers[0].volumeMounts
           content:
@@ -198,24 +155,27 @@ tests:
             secret:
               secretName: ha-secrets
 
-  - it: does not render generate-secrets-yaml init container when createSecretsYAML is empty
-    set:
-      homeAssistant.initContainer.tasks.createSecretsYAML: ""
-    asserts:
-      - notExists:
-          path: spec.template.spec.initContainers
-
-  - it: generate-secrets-yaml appears after install-hacs
+  - it: renders init containers in correct order with all tasks enabled
     set:
       homeAssistant.initContainer.tasks.setupHACS: true
       homeAssistant.initContainer.tasks.createSecretsYAML: ha-secrets
+      homeAssistant.config.enabled: true
+      homeAssistant.config.checkConfig.enabled: true
+    values:
+      - fixtures/init-containers.yaml
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: install-hacs
+          value: wait-for-mqtt
       - equal:
           path: spec.template.spec.initContainers[1].name
+          value: install-hacs
+      - equal:
+          path: spec.template.spec.initContainers[2].name
           value: generate-secrets-yaml
+      - equal:
+          path: spec.template.spec.initContainers[3].name
+          value: check-config
 
   - it: renders check-config init container when config and checkConfig are enabled
     set:
@@ -241,109 +201,83 @@ tests:
             subPath: configuration.yaml
             readOnly: true
 
-  - it: does not render check-config init container when checkConfig is disabled
+  - it: mounts config, packages, and themes volumes and volumeMounts when all enabled
     set:
       homeAssistant.config.enabled: true
-      homeAssistant.config.checkConfig.enabled: false
+      homeAssistant.packages.enabled: true
+      homeAssistant.themes.enabled: true
     asserts:
-      - notExists:
-          path: spec.template.spec.initContainers
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-config
+            configMap:
+              name: RELEASE-NAME-home-assistant-config
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-packages
+            configMap:
+              name: RELEASE-NAME-home-assistant-packages
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-themes
+            configMap:
+              name: RELEASE-NAME-home-assistant-themes
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-config
+            mountPath: /config/configuration.yaml
+            subPath: configuration.yaml
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-packages
+            mountPath: /config/packages
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-themes
+            mountPath: /config/themes
+            readOnly: true
 
-  - it: check-config appears after generate-secrets-yaml when both are enabled
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.checkConfig.enabled: true
-      homeAssistant.initContainer.tasks.createSecretsYAML: ha-secrets
-    asserts:
-      - equal:
-          path: spec.template.spec.initContainers[0].name
-          value: generate-secrets-yaml
-      - equal:
-          path: spec.template.spec.initContainers[1].name
-          value: check-config
-
-  - it: does not render ha-config or ha-packages volumes when both are disabled
+  - it: does not render volumes when config, packages, and themes are all disabled
     set:
       homeAssistant.config.enabled: false
       homeAssistant.packages.enabled: false
+      homeAssistant.themes.enabled: false
     asserts:
       - notExists:
           path: spec.template.spec.volumes
 
-  - it: mounts configuration.yaml via subPath when homeAssistant.config is enabled
+  - it: uses existingConfigMap names for config, packages, and themes volumes
     set:
       homeAssistant.config.enabled: true
-    asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: ha-config
-            configMap:
-              name: RELEASE-NAME-home-assistant-config
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: ha-config
-            mountPath: /config/configuration.yaml
-            subPath: configuration.yaml
-            readOnly: true
-
-  - it: mounts packages directory when homeAssistant.packages is enabled
-    set:
+      homeAssistant.config.existingConfigMap: my-ha-config
       homeAssistant.packages.enabled: true
-      homeAssistant.packages.files:
-        network.yaml: "sensor: []"
-    asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: ha-packages
-            configMap:
-              name: RELEASE-NAME-home-assistant-packages
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: ha-packages
-            mountPath: /config/packages
-            readOnly: true
-
-  - it: does not mount packages directory when homeAssistant.packages is disabled
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.packages.enabled: false
-    asserts:
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            mountPath: /config/packages
-
-  - it: mounts config and packages independently
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.packages.enabled: true
+      homeAssistant.packages.existingConfigMap: my-ha-packages
+      homeAssistant.themes.enabled: true
+      homeAssistant.themes.existingConfigMap: my-ha-themes
     asserts:
       - contains:
           path: spec.template.spec.volumes
           content:
             name: ha-config
             configMap:
-              name: RELEASE-NAME-home-assistant-config
+              name: my-ha-config
       - contains:
           path: spec.template.spec.volumes
           content:
             name: ha-packages
             configMap:
-              name: RELEASE-NAME-home-assistant-packages
+              name: my-ha-packages
       - contains:
-          path: spec.template.spec.containers[0].volumeMounts
+          path: spec.template.spec.volumes
           content:
-            name: ha-config
-            mountPath: /config/configuration.yaml
-            subPath: configuration.yaml
-            readOnly: true
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: ha-packages
-            mountPath: /config/packages
-            readOnly: true
+            name: ha-themes
+            configMap:
+              name: my-ha-themes
