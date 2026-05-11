@@ -1,0 +1,73 @@
+serviceAccount:
+  create: true
+
+initContainers:
+  - name: wait-for-mqtt
+    image: busybox:latest
+    command: ["sh", "-c", "until nc -z mqtt 1883; do sleep 2; done"]
+
+secretVolumeMounts:
+  - secretName: ha-token
+    mountPath: ha-token
+
+ingress:
+  gateway:
+    enabled: true
+    parentRefs:
+      - name: my-gateway
+        namespace: default
+    hostnames:
+      - ha.example.com
+  traefik:
+    enabled: false
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+  labels: {}
+  existingClaim: ""
+  existingVolume: ""
+
+monitor:
+  metric:
+    enabled: true
+    path: /api/prometheus
+    port: http
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      prometheus: kube-prometheus
+
+homeAssistant:
+  initContainer:
+    image:
+      registry: docker.io
+      repository: alpine
+      tag: "3.21"
+      digest: ""
+      pullPolicy: IfNotPresent
+    tasks:
+      setupHACS:
+        enabled: true
+        version: "2.0.1"
+      setupSecretsYaml:
+        enabled: true
+        secretName: ha-secrets
+
+  config:
+    enabled: true
+    existingConfigMap: my-ha-config
+    checkConfig:
+      enabled: true
+
+  packages:
+    enabled: true
+    existingConfigMap: my-ha-packages
+
+  themes:
+    enabled: true
+    existingConfigMap: my-ha-themes

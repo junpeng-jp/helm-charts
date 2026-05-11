@@ -1,27 +1,27 @@
-# Helm Chart Design Standards
+# Helm chart design standards
 
-# Chart Design Rules
+Charts that don't share conventions diverge quickly — making them hard to read, deploy, and maintain. These rules keep every chart in this repo consistent, secure, and familiar to anyone who opens a `values.yaml` for the first time.
 
-These principles govern the chart design.
+# Chart design rules
 
-**Consistency across Charts:** Every chart exposes the same baseline fields in the same order. A reader opening any chart's `values.yaml` should be quickly familiar with the chart's basic shared setup.
+**Consistency across charts:** Every chart exposes the same baseline fields in the same order. A reader opening any chart's `values.yaml` should find the structure immediately familiar.
 
-**No inline secrets:** Charts are designed so that secret values never appear in `values.yaml`. Secrets are injected by referencing an externally-managed Kubernetes Secret via `env[].valueFrom.secretKeyRef` or `secretVolumeMounts`.
+**No inline secrets:** Never put secret values in `values.yaml`. Inject secrets by referencing an externally-managed Kubernetes Secret via `env[].valueFrom.secretKeyRef` or `secretVolumeMounts`.
 
-**Logical Separation of Concerns:** Configurations should be clustered logically based on chart applications in the real world. For example, container registries should be swappable to support air-gapped installations. Container security should be separate from Pod security to allow for elevated permissions in init containers.
+**Logical separation of concerns:** Cluster configurations logically based on how the application works in the real world. For example, keep container registries swappable to support air-gapped installations. Separate container security from pod security to allow elevated permissions in init containers.
 
-**Flexibility via Specification Passthrough:** Special configurations (e.g. `extraVolumes`, `extraVolumeMounts`, `initContainers`, `pod.affinity`, etc.) provides flexibility by allowing chart users to pass through exact kubernetes specs for rendering.
+**Flexibility via specification passthrough:** Special configurations (e.g. `extraVolumes`, `extraVolumeMounts`, `initContainers`, `pod.affinity`, etc.) let chart users pass through exact Kubernetes specs for rendering.
 
 ---
 
-## values.yaml Field Order
+## Order fields in values.yaml
 
 Maintain this top-to-bottom ordering in `values.yaml` for consistency across charts:
 
 0. [`global`](#0-global) - includes `global.image`
 1. [`nameOverride`, `fullnameOverride`, `replicaCount`](#1-naming)
-2. [`serviceAccount`](#2-service-account)
-3. [`initContainers`, `env`, `secretVolumeMounts`, `extraVolumes`, `extraVolumeMounts`, `livenessProbe`, `readinessProbe`, `resources`](#3-initialization)
+2. [`serviceAccount`](#2-service-accounts)
+3. [`initContainers`, `env`, `secretVolumeMounts`, `extraVolumes`, `extraVolumeMounts`, `startupProbe`, `livenessProbe`, `readinessProbe`, `resources`](#3-initialization)
 4. [`podSecurityContext`, `containerSecurityContext`, `pod`](#4-security-context)
 5. [`networking`](#5-networking)
 6. [`ingress`](#6-ingress)
@@ -31,9 +31,9 @@ Maintain this top-to-bottom ordering in `values.yaml` for consistency across cha
 
 ---
 
-## values.schema.json Schema Validation
+## Validate with values.schema.json
 
-Every chart must ship a `values.schema.json` at the chart root. Helm validates user-supplied values against this schema before rendering, surfacing typos and type errors early.
+Ship a `values.schema.json` at the chart root. Helm validates user-supplied values against this schema before rendering, surfacing typos and type errors early.
 
 Minimum requirements:
 
@@ -79,7 +79,7 @@ Example skeleton:
 
 ## 0. Global
 
-`global` holds settings that must be resolved before any chart-specific defaults are applied. `global.image` centralises image coordinates for the chart.
+`global` holds settings resolved before any chart-specific defaults apply. `global.image` centralises image coordinates for the chart.
 
 ```yaml
 global:
@@ -92,7 +92,7 @@ global:
     pullSecrets: []           # list of imagePullSecret names
 ```
 
-`tag` is intentionally left empty in the standard pattern to force the deployer to pin a version explicitly. Charts that ship a known-good default may pre-fill it (e.g. `tag: "1.2.3"`).
+Leave `tag` empty in the standard pattern to force the deployer to pin a version explicitly. Charts with a known-good default may pre-fill it (e.g. `tag: "1.2.3"`).
 
 Template rendering pattern in `_helpers.tpl`:
 
@@ -122,11 +122,11 @@ fullnameOverride: ""   # replaces the entire generated name (release-name + char
 replicaCount: 1        # number of pod replicas; keep at 1 for StatefulSets unless shared storage supports it
 ```
 
-`_helpers.tpl` already handles naming via the standard `<chart>.fullname` pattern. These fields exist in `values.yaml` solely to document that the knobs are available.
+`_helpers.tpl` handles naming via the standard `<chart>.fullname` pattern. These fields exist in `values.yaml` only to document that the knobs are available.
 
 ---
 
-## 2. Service Account
+## 2. Service accounts
 
 Every chart includes this block. When `create: false` and `name: ""`, the pod uses the namespace default service account.
 
@@ -143,13 +143,13 @@ When `create: true`, `_helpers.tpl` creates the ServiceAccount and the pod spec 
 
 ## 3. Initialization
 
-This section groups everything that configures how the workload starts and runs: init containers, environment and secret injection, probes, and resource constraints.
+Configure how the workload starts and runs: init containers, environment and secret injection, probes, and resource constraints.
 
-### 3.1 Init Containers
+### 3.1 Use init containers
 
-For any initialization container, initContainers provide a way to passthrough configuration for direct rendering.
+Use `initContainers` to pass through full Kubernetes init container specs for direct rendering.
 
-Example - fix volume ownership before the main container starts:
+Example — fix volume ownership before the main container starts:
 
 ```yaml
 initContainers:
@@ -163,9 +163,9 @@ initContainers:
       runAsUser: 0   # root required to chown; main container runs as 1000
 ```
 
-### 3.2 Environment Variables
+### 3.2 Inject environment variables
 
-Use the standard Kubernetes `env` list. Supports literal values and references to external Secrets or ConfigMaps. No inline secret values are permitted in `values.yaml`.
+Use the standard Kubernetes `env` list. It supports literal values and references to external Secrets or ConfigMaps. Never put inline secret values in `values.yaml`.
 
 ```yaml
 env:
@@ -183,9 +183,9 @@ env:
         key: log-level
 ```
 
-### 3.3 Secret File Mounts
+### 3.3 Mount secret files
 
-Use `secretVolumeMounts` to mount a Kubernetes Secret as files. The chart automatically creates the volume and volumeMount. Secrets are always mounted under `/run/secrets/<secretName>/` and are always read-only. This path is typically tmpfs-backed on Linux, so secret data does not touch disk.
+Use `secretVolumeMounts` to mount a Kubernetes Secret as files. The chart automatically creates the volume and volumeMount. Secrets mount read-only under `/run/secrets/<secretName>/`, which is typically tmpfs-backed on Linux so secret data never touches disk.
 
 ```yaml
 secretVolumeMounts:
@@ -195,7 +195,7 @@ secretVolumeMounts:
     name: my-secret-alias            # required: volume names must be unique; set when the same secretName appears more than once
 ```
 
-The optional `name` field overrides the Kubernetes volume name (defaults to `secretName`). It is required whenever the same `secretName` appears more than once in the list - duplicate volume names cause a Kubernetes admission rejection.
+The optional `name` field overrides the Kubernetes volume name (defaults to `secretName`). Set it whenever the same `secretName` appears more than once — duplicate volume names cause a Kubernetes admission rejection.
 
 The chart generates:
 
@@ -210,9 +210,9 @@ The chart generates:
 #     readOnly: true
 ```
 
-### 3.4 Extra Volumes
+### 3.4 Add extra volumes
 
-Both fields accept the full Kubernetes volume and volumeMount specs without wrapping.
+Both fields accept full Kubernetes volume and volumeMount specs without wrapping.
 
 ```yaml
 extraVolumes:
@@ -231,15 +231,24 @@ extraVolumeMounts:
     mountPath: /dev/ttyUSB0
 ```
 
-### 3.5 Security Rule
+### 3.5 Never use inline secrets
 
-This section enforces the **No inline secrets** design guideline. No chart may include a plain-text secret field in `values.yaml` (e.g., `password: ""`). Use `secretKeyRef` in `env` ([Environment Variables](#42-environment-variables)) or `secretVolumeMounts` ([Secret File Mounts](#43-secret-file-mounts)) to reference an externally-managed Kubernetes Secret instead.
+No chart may include a plain-text secret field in `values.yaml` (e.g., `password: ""`). Use `secretKeyRef` in `env` ([Inject environment variables](#32-inject-environment-variables)) or `secretVolumeMounts` ([Mount secret files](#33-mount-secret-files)) to reference an externally-managed Kubernetes Secret instead.
 
-### 3.6 Probes
+### 3.6 Configure health probes
 
-Liveness and readiness probes sit at the top level of `values.yaml`. Include them **only when the app exposes a known HTTP health endpoint**. Each probe has an `enabled` flag.
+Include startup, liveness, and readiness probes **only when the app exposes a known HTTP health endpoint**. Each probe has an `enabled` flag.
+
+`startupProbe` is optional. Use it for apps with slow or variable startup times to prevent liveness/readiness probes from firing too early. Default it to `enabled: false`.
 
 ```yaml
+startupProbe:
+  enabled: false
+  httpGet:
+    path: /
+    port: http
+  periodSeconds: 10
+  failureThreshold: 18
 livenessProbe:
   enabled: true
   httpGet:
@@ -258,20 +267,24 @@ readinessProbe:
   failureThreshold: 3
 ```
 
-When the app has no usable HTTP health endpoint, omit both fields entirely and add a one-line comment in the workload template (e.g. `# No HTTP health endpoint - probes omitted`).
+When the app has no usable HTTP health endpoint, omit all probe fields entirely and add a one-line comment in the workload template (e.g. `# No HTTP health endpoint - probes omitted`).
 
 Template rendering pattern:
 
 ```
+{{- if .Values.startupProbe.enabled }}
+startupProbe:
+  {{- omit .Values.startupProbe "enabled" | toYaml | nindent 2 }}
+{{- end }}
 {{- if .Values.livenessProbe.enabled }}
 livenessProbe:
   {{- omit .Values.livenessProbe "enabled" | toYaml | nindent 2 }}
 {{- end }}
 ```
 
-### 3.7 Resources
+### 3.7 Set resource limits
 
-Always provide default `requests` and `limits`. CPU limits may be omitted intentionally for workloads that spike; document the reason in a comment.
+Always provide default `requests` and `limits`. You may omit CPU limits intentionally for workloads that spike; document the reason in a comment.
 
 ```yaml
 resources:
@@ -285,13 +298,15 @@ resources:
 
 ---
 
-## 4. Security Context
+## 4. Security context
 
-Following Bitnami convention, security context is split into two top-level fields: `podSecurityContext` for the shared pod environment and `containerSecurityContext` for the main container's OS-level privileges. Pod scheduling metadata is grouped separately under `pod`. Init containers override security context via their own inline `securityContext` field in the `initContainers` spec.
+Follow Bitnami convention: `podSecurityContext` for the shared pod environment, `containerSecurityContext` for the main container's OS-level privileges. Group pod scheduling metadata separately under `pod`. Init containers override security context with their own inline `securityContext` in the `initContainers` spec.
 
-### 4.1 Pod Security Context
+**Charts that require root:** Some applications must run as root (e.g. they manage host devices, raw sockets, or perform privileged system operations). For these charts, omit both `podSecurityContext` and `containerSecurityContext` from `values.yaml` and add a comment in the workload template explaining why (e.g. `# Security context omitted - home-assistant requires root to access host devices`). Don't include empty or permissive security context blocks as placeholders.
 
-`podSecurityContext` sets defaults inherited by **all containers** in the pod (init and main). It governs the shared pod environment: volume ownership, supplemental groups, and kernel-level settings.
+### 4.1 Set the pod security context
+
+`podSecurityContext` sets defaults inherited by **all containers** in the pod (init and main). It governs volume ownership, supplemental groups, and kernel-level settings.
 
 ```yaml
 podSecurityContext:
@@ -303,7 +318,7 @@ podSecurityContext:
   runAsNonRoot: true          # default for all containers; overridable per container
 ```
 
-`sysctls` accepts a list of `name`/`value` pairs. Only *safe* sysctls (those in Kubernetes' allowlist) are permitted by default; unsafe sysctls require an explicit `allowedUnsafeSysctls` admission configuration on the node.
+`sysctls` accepts a list of `name`/`value` pairs. Only *safe* sysctls (those in Kubernetes' allowlist) are permitted by default. Unsafe sysctls require an explicit `allowedUnsafeSysctls` admission configuration on the node.
 
 ```yaml
 # Increase the local port range - useful for apps that open many outbound connections
@@ -327,9 +342,9 @@ podSecurityContext:
       value: "3"
 ```
 
-### 4.2 Container Security Context
+### 4.2 Set the container security context
 
-`containerSecurityContext` controls what the **main container's process is allowed to do at the OS level** - Linux capabilities, privilege escalation, filesystem mutability, and privileged mode. These settings apply only to the main container and override any pod-level defaults.
+`containerSecurityContext` controls what the **main container's process is allowed to do at the OS level** — Linux capabilities, privilege escalation, filesystem mutability, and privileged mode. These settings apply only to the main container and override any pod-level defaults.
 
 ```yaml
 containerSecurityContext:
@@ -344,9 +359,9 @@ containerSecurityContext:
     # add: [NET_BIND_SERVICE]   # add back only what the app requires
 ```
 
-### 4.3 Pod Scheduling
+### 4.3 Control pod scheduling
 
-`pod` groups scheduling metadata - fields that control where and how the pod is placed on the cluster. Every field accepts the full Kubernetes spec without wrapping.
+`pod` groups scheduling metadata: fields that control where and how the pod is placed on the cluster. Every field accepts the full Kubernetes spec without wrapping.
 
 ```yaml
 pod:
@@ -354,9 +369,10 @@ pod:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  hostNetwork: false  # enable only for pods that need to share the host network namespace (e.g. mDNS)
 ```
 
-Example - pin to a specific node, tolerate a dedicated taint, and label the pod for a backup tool:
+Example — pin to a specific node, tolerate a dedicated taint, and label the pod for a backup tool:
 
 ```yaml
 pod:
@@ -376,13 +392,13 @@ pod:
 
 ## 5. Networking
 
-`networking.service` is a **map** where each key is a logical service name (e.g. `main`, `dns`). Each entry configures one Kubernetes Service resource. Multiple services may be enabled simultaneously - use this when an application needs to expose different port groups with different service types (e.g. a ClusterIP for HTTP traffic and a LoadBalancer for DNS).
+`networking.service` is a **map** where each key is a logical service name (e.g. `main`, `dns`). Each entry configures one Kubernetes Service resource. Enable multiple services simultaneously when an application needs to expose different port groups with different service types (e.g. a ClusterIP for HTTP traffic and a LoadBalancer for DNS).
 
 `type` accepts standard Kubernetes service types: `ClusterIP`, `LoadBalancer`, or `NodePort`.
 
-`ports` is a **map** keyed by port name within each service. Each entry specifies `port` (the Service port number) and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec - use this for ports that are off by default but meaningful to expose at the user's discretion.
+`ports` is a **map** keyed by port name within each service. Each entry specifies `port` and `protocol`. An optional `enabled: false` flag excludes the port from the rendered Service and container spec. Use this for ports that are off by default but meaningful to expose at the user's discretion.
 
-**Port names must be unique across all services within a chart.** The rendered container port list is derived from all enabled services and their enabled ports; duplicate names would produce an invalid pod spec.
+**Keep port names unique across all services within a chart.** The chart derives container ports from all enabled services and their enabled ports. Duplicate names produce an invalid pod spec.
 
 Each chart's `values.schema.json` must define `networking.service` as an object with `"required": ["<name1>", "<name2>"]` and an `additionalProperties` schema describing the per-service shape.
 
@@ -398,10 +414,15 @@ networking:
           protocol: TCP
 ```
 
-`service.yaml` iterates over all entries and renders one Service per enabled entry. Use `keys | sortAlpha` for deterministic rendering order (map iteration order is non-deterministic in Go and can produce diff noise across helm runs). Template rendering pattern:
+`service.yaml` iterates over all entries and renders one Service per enabled entry. Use `keys | sortAlpha` for deterministic rendering order (map iteration order is non-deterministic in Go and can produce diff noise across helm runs).
+
+Each chart designates one service name as the **primary** service. Use whatever name fits the application (e.g. `app`, `http`, `web`). Document the chosen primary name in a comment above the naming logic.
+
+Template rendering pattern:
 
 ```
 {{- /* service.yaml */ -}}
+{{- /* Primary service name for this chart: "app" (rendered without suffix) */ -}}
 {{- range $svcName := keys .Values.networking.service | sortAlpha }}
 {{- $svc := index $.Values.networking.service $svcName }}
 {{- if $svc.enabled }}
@@ -409,7 +430,7 @@ networking:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ if eq $svcName "main" }}{{ include "<chart>.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "<chart>.fullname" $) $svcName }}{{ end }}
+  name: {{ if eq $svcName "app" }}{{ include "<chart>.fullname" $ }}{{ else }}{{ printf "%s-%s" (include "<chart>.fullname" $) $svcName }}{{ end }}
   ...
 spec:
   type: {{ $svc.type }}
@@ -427,7 +448,7 @@ spec:
 {{- end }}
 ```
 
-The port `enabled` field uses `default true $port.enabled` - omitting the field is equivalent to `enabled: true`. Do not use `ne (toString $port.enabled) "false"`; that pattern is fragile and renders ports when `enabled` is set to `0` or an empty string.
+The port `enabled` field uses `default true $port.enabled`. Omitting the field is equivalent to `enabled: true`. Don't use `ne (toString $port.enabled) "false"` — that pattern is fragile and renders ports when `enabled` is `0` or an empty string.
 
 Apply the same range pattern in the workload template to keep container port names in sync:
 
@@ -449,7 +470,7 @@ ports:
   {{- end }}
 ```
 
-### 5.1 Multi-protocol ports
+### 5.1 Model multi-protocol ports
 
 Some applications expose the same logical service over multiple transport protocols (e.g., a DNS server listening on both UDP and TCP on port 53). Model each physical port as a separate map entry, and group them with a shared comment. Use multiple named services to group ports by access pattern (e.g. in-cluster HTTP vs. externally-accessible DNS):
 
@@ -487,7 +508,7 @@ Kubernetes permits two Service port entries with the same `port` number when the
 
 ## 6. Ingress
 
-`ingress` configures how the application is exposed outside the cluster. It is intentionally separate from `networking` (which configures the Kubernetes Service) to keep transport-layer and HTTP-routing concerns distinct.
+`ingress` configures how the application is exposed outside the cluster.
 
 Multiple ingress mechanisms may be defined in a chart, but **at most one may be enabled at a time**. Enforce this with a template-level `fail` guard at the top of each ingress template (simpler and more readable than JSON Schema `not`/`oneOf` constructs):
 
@@ -497,11 +518,11 @@ Multiple ingress mechanisms may be defined in a chart, but **at most one may be 
 {{- end }}
 ```
 
-Each ingress template must also guard against the a specific service that it routes to since ingress routes are meaningless without a backend:
+Each ingress template must also guard against the specific service it routes to, since ingress routes require a service.
 
 ```
-{{- if not .Values.networking.service.main.enabled }}
-{{- fail "ingress requires networking.service.main to be enabled" }}
+{{- if not .Values.networking.service.<primary>.enabled }}
+{{- fail "ingress requires networking.service.<primary> to be enabled" }}
 {{- end }}
 ```
 
@@ -540,7 +561,7 @@ ingress:
 {{- end }}
 ```
 
-Templates: `httproute.yaml` renders the `gateway.networking.k8s.io/v1` HTTPRoute from `ingress.gateway`; `ingressroute.yaml` renders the `traefik.io/v1alpha1` IngressRoute from `ingress.traefik`. Both route to the `http` port of the `main` Service.
+`httproute.yaml` renders the `gateway.networking.k8s.io/v1` HTTPRoute from `ingress.gateway`. `ingressroute.yaml` renders the `traefik.io/v1alpha1` IngressRoute from `ingress.traefik`. Both route to the `http` port of the primary Service.
 
 ---
 
@@ -563,7 +584,7 @@ persistence:
 
 When `existingClaim` is non-empty, the chart skips the `volumeClaimTemplates` entry (for StatefulSets) or PVC manifest (for Deployments) and references the named claim directly.
 
-When `existingVolume` is non-empty (StatefulSet charts only), the `volumeClaimTemplates` entry sets `volumeName` to bind the claim to a specific pre-provisioned PV. This is mutually exclusive with `existingClaim`; charts must enforce this with a template-level `fail` guard:
+When `existingVolume` is non-empty (StatefulSet charts only), the `volumeClaimTemplates` entry sets `volumeName` to bind the claim to a specific pre-provisioned PV. This is mutually exclusive with `existingClaim`. Enforce this with a template-level `fail` guard:
 
 ```
 {{- if and .Values.persistence.existingClaim .Values.persistence.existingVolume }}
@@ -578,13 +599,13 @@ labels:
   {{- merge (include "<chart>.labels" . | fromYaml) (.Values.persistence.labels | default dict) | toYaml | nindent 10 }}
 ```
 
-Do not emit the two label blocks separately with `toYaml` - concatenating them produces duplicate keys when any key overlaps, which is technically invalid YAML (last-wins, silently).
+Don't emit the two label blocks separately with `toYaml`. Concatenating them produces duplicate keys when any key overlaps, which is technically invalid YAML (last-wins, silently).
 
 ---
 
 ## 8. Monitors
 
-`monitor.metric` creates a Prometheus `ServiceMonitor` targeting the chart's Service. Disabled by default; enable only when the app exposes a Prometheus-compatible scrape endpoint. `labels` must match the target Prometheus instance's `serviceMonitorSelector`.
+`monitor.metric` creates a Prometheus `ServiceMonitor` targeting the chart's Service. Disabled by default. Enable it only when the app exposes a Prometheus-compatible scrape endpoint. `labels` must match the target Prometheus instance's `serviceMonitorSelector`.
 
 ```yaml
 monitor:
@@ -603,10 +624,7 @@ monitor:
 
 Anything that doesn't fit the standard sections goes here, after `monitor`. Each subsystem gets its own top-level key with a comment explaining its purpose.
 
-### Naming conventions
-
-- **Application config** - settings that map directly to the application's own configuration (env vars, config files, etc.) go under a key named after the application in camelCase (e.g. `technitium`). This makes clear that the block belongs to the app, not the chart harness.
-
+Name application config keys after the application in camelCase (e.g. `technitium`). This makes clear the block belongs to the app, not the chart harness.
 
 ### Rules
 

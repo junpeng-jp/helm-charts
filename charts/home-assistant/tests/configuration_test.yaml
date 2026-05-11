@@ -1,0 +1,76 @@
+suite: Configuration
+templates:
+  - templates/statefulset.yaml
+tests:
+  - it: renders ConfigMap volumes for config, packages, and themes but does not mount them in the main container
+    set:
+      homeAssistant.config.enabled: true
+      homeAssistant.config.existingConfigMap: my-ha-config
+      homeAssistant.packages.enabled: true
+      homeAssistant.packages.existingConfigMap: my-ha-packages
+      homeAssistant.themes.enabled: true
+      homeAssistant.themes.existingConfigMap: my-ha-themes
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-config
+            configMap:
+              name: my-ha-config
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-packages
+            configMap:
+              name: my-ha-packages
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-themes
+            configMap:
+              name: my-ha-themes
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-config
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-packages
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-themes
+
+  # Setting existingConfigMap does not alone create volumes — the enabled flag gates rendering.
+  - it: does not render ConfigMap volumes when features are disabled even if existingConfigMap is set
+    set:
+      homeAssistant.config.enabled: false
+      homeAssistant.config.existingConfigMap: my-ha-config
+      homeAssistant.packages.enabled: false
+      homeAssistant.packages.existingConfigMap: my-ha-packages
+      homeAssistant.themes.enabled: false
+      homeAssistant.themes.existingConfigMap: my-ha-themes
+    asserts:
+      - notExists:
+          path: spec.template.spec.volumes
+
+  - it: copy-config init container mounts the ConfigMap read-only and the config PVC for writing
+    set:
+      homeAssistant.config.enabled: true
+      homeAssistant.config.existingConfigMap: my-ha-config
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: copy-config
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: ha-config
+            mountPath: /run/ha-config
+            readOnly: true
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: config
+            mountPath: /config

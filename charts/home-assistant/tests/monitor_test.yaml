@@ -2,36 +2,39 @@ suite: ServiceMonitor
 templates:
   - templates/servicemonitor.yaml
 tests:
-  - it: does not render when monitor is disabled
+  - it: does not render when monitor.metric.enabled is false
     set:
       monitor.metric.enabled: false
     asserts:
       - hasDocuments:
           count: 0
 
-  - it: renders with scrape config, selector, and extra labels when enabled
+  - it: renders ServiceMonitor with scrape config, selector labels, and extra labels when enabled
     set:
       monitor.metric.enabled: true
       monitor.metric.path: /api/prometheus
+      monitor.metric.port: http
       monitor.metric.interval: 30s
       monitor.metric.scrapeTimeout: 10s
-      monitor.metric.labels:
-        prometheus: kube-prometheus
+      monitor.metric.labels.prometheus: kube-prometheus
     asserts:
       - isKind:
           of: ServiceMonitor
       - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant
+      - equal:
           path: spec.endpoints[0].path
           value: /api/prometheus
+      - equal:
+          path: spec.endpoints[0].port
+          value: http
       - equal:
           path: spec.endpoints[0].interval
           value: 30s
       - equal:
           path: spec.endpoints[0].scrapeTimeout
           value: 10s
-      - equal:
-          path: spec.endpoints[0].port
-          value: http
       - equal:
           path: spec.selector.matchLabels["app.kubernetes.io/name"]
           value: home-assistant

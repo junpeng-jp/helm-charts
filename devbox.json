@@ -16,6 +16,7 @@
     "scripts": {
       "kind:setup": "kind create cluster --config config/kind-config.yaml && kubectl cluster-info --context kind-helm-chart-test",
       "kind:teardown": "kind delete cluster --name helm-chart-test",
+      "ut:test": "if [ -n \"${CHART:-}\" ]; then helm unittest \"charts/$CHART\"; else helm unittest charts/*; fi",
       "ct:test": "bash scripts/ct-test.sh",
       "ct:test-chart": "bash scripts/ct-test.sh"
     }

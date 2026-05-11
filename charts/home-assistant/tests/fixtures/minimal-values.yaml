@@ -1,0 +1,40 @@
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 5Gi
+  accessModes:
+    - ReadWriteOnce
+
+homeAssistant:
+  config:
+    enabled: false
+    checkConfig:
+      enabled: false
+  packages:
+    enabled: false
+  themes:
+    enabled: false
+  initContainer:
+    tasks:
+      setupHACS:
+        enabled: false
+      setupSecretsYaml:
+        enabled: false
+
+ingress:
+  gateway:
+    enabled: false
+  traefik:
+    enabled: false
+
+monitor:
+  metric:
+    enabled: false
+
+serviceAccount:
+  create: false
+
+secretVolumeMounts: []
+initContainers: []
+extraVolumes: []
+extraVolumeMounts: []
