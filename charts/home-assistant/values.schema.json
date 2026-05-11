@@ -46,6 +46,19 @@
         }
       }
     },
+    "secretVolumeMounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["secretName"],
+        "additionalProperties": false,
+        "properties": {
+          "secretName": { "type": "string" },
+          "mountPath":  { "type": "string", "pattern": "^[^/]" },
+          "name":       { "type": "string" }
+        }
+      }
+    },
     "extraVolumes":      { "type": "array" },
     "extraVolumeMounts": { "type": "array" },
     "startupProbe": {
@@ -231,8 +244,22 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "setupHACS":      { "type": "boolean" },
-                "createSecretsYAML": { "type": "string" }
+                "setupHACS": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "version": { "type": "string" }
+                  }
+                },
+                "setupSecretsYaml": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled":    { "type": "boolean" },
+                    "secretName": { "type": "string" }
+                  }
+                }
               }
             }
           }

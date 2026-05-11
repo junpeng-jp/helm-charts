@@ -1,0 +1,83 @@
+# ingress
+{{- if and .Values.ingress.traefik.tls.enabled (not .Values.ingress.traefik.tls.secretName) (not .Values.ingress.traefik.tls.certResolver) }}
+{{- fail "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set" }}
+{{- end }}
+
+# persistence
+{{- if and .Values.persistence.existingClaim .Values.persistence.existingVolume }}
+{{- fail "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one" }}
+{{- end }}
+{{- if and .Values.persistence.existingClaim (not .Values.persistence.enabled) }}
+{{- fail "persistence.existingClaim has no effect when persistence.enabled is false; set persistence.enabled: true" }}
+{{- end }}
+{{- if and .Values.persistence.existingVolume (not .Values.persistence.enabled) }}
+{{- fail "persistence.existingVolume has no effect when persistence.enabled is false; set persistence.enabled: true" }}
+{{- end }}
+{{- if and .Values.persistence.enabled (gt (int .Values.replicaCount) 1) (has "ReadWriteOnce" .Values.persistence.accessModes) }}
+{{- fail "replicaCount > 1 is incompatible with ReadWriteOnce storage; use ReadWriteMany or set replicaCount: 1" }}
+{{- end }}
+
+# features that require persistence
+{{- $needsPersistence := list
+    (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupHACS.enabled        "msg" "homeAssistant.initContainer.tasks.setupHACS requires persistence.enabled to be true")
+    (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled "msg" "homeAssistant.initContainer.tasks.setupSecretsYaml requires persistence.enabled to be true")
+    (dict "enabled" .Values.homeAssistant.config.enabled   "msg" "homeAssistant.config.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml")
+    (dict "enabled" .Values.homeAssistant.packages.enabled "msg" "homeAssistant.packages.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/packages")
+    (dict "enabled" .Values.homeAssistant.themes.enabled   "msg" "homeAssistant.themes.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/themes")
+}}
+{{- range $needsPersistence }}
+{{- if and .enabled (not $.Values.persistence.enabled) }}
+{{- fail .msg }}
+{{- end }}
+{{- end }}
+
+# init-container tasks
+{{- if and .Values.homeAssistant.initContainer.tasks.setupHACS.enabled (not .Values.homeAssistant.initContainer.tasks.setupHACS.version) }}
+{{- fail "homeAssistant.initContainer.tasks.setupHACS.version must be set when setupHACS is enabled" }}
+{{- end }}
+{{- if and .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled (not .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName) }}
+{{- fail "homeAssistant.initContainer.tasks.setupSecretsYaml.secretName must be set when setupSecretsYaml is enabled" }}
+{{- end }}
+
+# config / packages / themes (each requires existingConfigMap)
+{{- $needsConfigMap := list
+    (dict "path" "homeAssistant.config"   "enabled" .Values.homeAssistant.config.enabled   "cm" .Values.homeAssistant.config.existingConfigMap)
+    (dict "path" "homeAssistant.packages" "enabled" .Values.homeAssistant.packages.enabled "cm" .Values.homeAssistant.packages.existingConfigMap)
+    (dict "path" "homeAssistant.themes"   "enabled" .Values.homeAssistant.themes.enabled   "cm" .Values.homeAssistant.themes.existingConfigMap)
+}}
+{{- range $needsConfigMap }}
+{{- if and .enabled (not .cm) }}
+{{- fail (printf "%s.existingConfigMap must be set when %s.enabled is true" .path .path) }}
+{{- end }}
+{{- end }}
+
+{{- if and .Values.homeAssistant.config.checkConfig.enabled (not .Values.homeAssistant.config.enabled) }}
+{{- fail "homeAssistant.config.checkConfig.enabled requires homeAssistant.config.enabled to be true" }}
+{{- end }}
+
+# secretVolumeMounts
+{{- $seen := dict }}
+{{- range .Values.secretVolumeMounts }}
+{{- $volName := .name | default .secretName }}
+{{- if index $seen $volName }}
+{{- fail (printf "secretVolumeMounts: duplicate volume name %q; set a unique .name on one of the entries to disambiguate" $volName) }}
+{{- end }}
+{{- $_ := set $seen $volName true }}
+{{- end }}
+
+# setupSecretsYaml / secretVolumeMounts cross-check
+{{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
+{{- range .Values.secretVolumeMounts }}
+{{- if eq .secretName $.Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}
+{{- fail (printf "secretVolumeMounts: secret %q is already used by homeAssistant.initContainer.tasks.setupSecretsYaml to generate /config/secrets.yaml; remove it from secretVolumeMounts" $.Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+# user initContainers reserved name check
+{{- $reservedInitNames := list "install-hacs" "generate-secrets-yaml" "copy-configuration" "copy-packages" "copy-themes" "check-config" }}
+{{- range .Values.initContainers }}
+{{- if has .name $reservedInitNames }}
+{{- fail (printf "initContainers: name %q is reserved by the chart; rename your init container" .name) }}
+{{- end }}
+{{- end }}

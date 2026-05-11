@@ -1,17 +1,19 @@
 global:
+  # Pin the image tag to prevent redeployments from accidentally changing the Home Assistant version.
+  # To pull from a private registry, create an image pull secret:
+  #   kubectl create secret docker-registry <name> \
+  #     --docker-server=<registry> --docker-username=<user> --docker-password=<token>
   image:
     registry: ghcr.io
     repository: home-assistant/home-assistant
-    tag: "2026.5"       # highly encouraged to pin to a specific version of home-assistant
-    digest: ""          # takes precedence over tag when set (e.g. sha256:abc123)
+    tag: "2026.5"
+    digest: ""
     pullPolicy: IfNotPresent
     pullSecrets: []
-    # Create with: kubectl create secret docker-registry <name> \
-    #   --docker-server=<registry> --docker-username=<user> --docker-password=<token>
 
 nameOverride: ""
 fullnameOverride: ""
-
+# TODO: rethink where replicaCount config sits
 replicaCount: 1
 
 serviceAccount:
@@ -25,11 +27,22 @@ env:
   - name: TZ
     value: UTC
 
+# secretVolumeMounts mounts Kubernetes Secrets into the main container under /run/secrets/.
+# For Home Assistant's secrets.yaml, see homeAssistant.initContainer.tasks.setupSecretsYaml below.
+#
+# Example:
+#   secretVolumeMounts:
+#     - secretName: my-secret             # mounts at /run/secrets/my-secret
+#     - secretName: my-secret
+#       mountPath: alt-path               # mounts at /run/secrets/alt-path
+secretVolumeMounts: []
 extraVolumes: []
 extraVolumeMounts: []
 
 startupProbe:
-  enabled: false
+  enabled: true
+  # Enable for instances with many integrations or slow hardware - prevents liveness
+  # probe restart loops during long cold starts. Allows up to 3 min: 18 × 10s.
   httpGet:
     path: /
     port: http
@@ -40,15 +53,15 @@ livenessProbe:
   httpGet:
     path: /
     port: http
-  initialDelaySeconds: 10
-  periodSeconds: 10
+  initialDelaySeconds: 60
+  periodSeconds: 30
   failureThreshold: 5
 readinessProbe:
   enabled: true
   httpGet:
     path: /
     port: http
-  initialDelaySeconds: 10
+  initialDelaySeconds: 30
   periodSeconds: 10
   failureThreshold: 10
 
@@ -64,9 +77,7 @@ pod:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # hostNetwork: true gives the pod access to the host's network interfaces.
-  # Enable only if you want to have auto-discovery of wifi devices via mDNS
-  hostNetwork: false
+  hostNetwork: false    # Enable only if you want to have auto-discovery of wifi devices via mDNS
 
 networking:
   service:
@@ -105,7 +116,7 @@ ingress:
 
 persistence:
   enabled: true
-  storageClass: ""  # defaults to local-path
+  storageClass: ""  # uses the cluster default
   accessModes:
     - ReadWriteOnce
   size: 5Gi
@@ -129,29 +140,47 @@ monitor:
 homeAssistant:
   # initContainer - configuration for the utility init containers that run before Home Assistant.
   initContainer:
-    # image - default image used by all utility init containers (fixPermissions, createSecretsYAML).
-    # Override here to change the busybox image for all of them at once.
+    # image - default image used by all utility init containers.
+    # Override here to change the image for all of them at once.
     image:
       registry: docker.io
-      repository: busybox
-      tag: "1.37"
+      repository: alpine
+      tag: "3.21"
       digest: ""          # takes precedence over tag when set (e.g. sha256:abc123)
       pullPolicy: IfNotPresent
 
     tasks:
-      # createSecretsYAML - generates /config/secrets.yaml from a Kubernetes Secret.
-      # Every key in that Secret becomes an entry in /config/secrets.yaml.
-      createSecretsYAML: ""
-
       # setupHACS - installs HACS (Home Assistant Community Store) via an init container
       # before Home Assistant starts. The init container writes into /config/custom_components/hacs.
-      # persistence must be enabled (or existingClaim set) for the config volume to exist.
-      setupHACS: false
+      # Requires persistence.enabled (or existingClaim set) for the config volume to exist.
+      setupHACS:
+        enabled: false
+        version: "2.0.5"   # required when enabled
 
-  # config - mounted to /config/configuration.yaml (read-only).
+      # setupSecretsYaml - mounts a Kubernetes Secret as a volume and writes its
+      # key-value pairs to /config/secrets.yaml before Home Assistant starts.
+      #
+      # This task fully manages /config/secrets.yaml and overwrites it on every pod restart. Don't
+      # use the Studio Code Server, SSH, or Samba add-ons to modify secrets.yaml when this task is
+      # enabled. Those changes are lost on the next restart.
+      setupSecretsYaml:
+        enabled: false
+        secretName: ""  # required when enabled is true
+
+  # config - seeds /config/configuration.yaml on every pod restart.
   # See: https://www.home-assistant.io/docs/configuration/
   #
-  # Example ConfigMap (single key "configuration.yaml"):
+  # Requires persistence.enabled. The init container overwrites this file on every restart,
+  # so changes made via the file editor or VS Code add-on are lost on the next restart.
+  #
+  # To enable packages and themes, your configuration.yaml must include the directives below.
+  # You can add them to the ConfigMap data alongside your other settings:
+  #
+  #   packages: !include_dir_merge_named packages/
+  #   frontend:
+  #     themes: !include_dir_merge_named themes/
+  #
+  # Example ConfigMap:
   #
   #   apiVersion: v1
   #   kind: ConfigMap
@@ -171,14 +200,15 @@ homeAssistant:
   #           - 10.0.0.0/8
   config:
     enabled: false
-    existingConfigMap: ""
+    existingConfigMap: ""  # required when enabled is true; must contain key "configuration.yaml"
     checkConfig:
-      enabled: false
+      enabled: false  # runs 'hass --script check_config' in an init container before startup; requires config.enabled and persistence.enabled
 
-  # packages - each file is mounted into /config/packages/ (read-only).
-  # Packages can include: automation, script, sensor, binary_sensor,
-  # input_boolean, input_number, input_select, input_text, group, etc.
+  # packages - seeds each file into /config/packages/ on every pod restart.
   # See: https://www.home-assistant.io/docs/configuration/packages/
+  #
+  # Requires persistence.enabled and the packages include directive in configuration.yaml (see config above).
+  # The init container overwrites these files on every restart.
   #
   # Example ConfigMap (each key becomes a file under /config/packages/):
   #
@@ -197,19 +227,15 @@ homeAssistant:
   #             service: light.turn_on
   #             target:
   #               area_id: living_room
-  #     climate.yaml: |
-  #       input_number:
-  #         target_temp:
-  #           name: Target Temperature
-  #           min: 15
-  #           max: 30
-  #           step: 0.5
   packages:
     enabled: false
     existingConfigMap: ""
 
-  # themes - each file is mounted into /config/themes/ (read-only).
+  # themes - seeds each file into /config/themes/ on every pod restart.
   # See: https://www.home-assistant.io/integrations/frontend/#defining-themes
+  #
+  # Requires persistence.enabled and the frontend.themes include directive in configuration.yaml (see config above).
+  # The init container overwrites these files on every restart.
   #
   # Example ConfigMap (each key becomes a file under /config/themes/):
   #
