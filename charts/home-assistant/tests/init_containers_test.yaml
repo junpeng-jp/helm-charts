@@ -1,0 +1,75 @@
+suite: Init Containers
+templates:
+  - templates/statefulset.yaml
+tests:
+  - it: renders init containers in correct order with all tasks and user containers enabled
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
+      homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
+      homeAssistant.config.enabled: true
+      homeAssistant.config.existingConfigMap: my-ha-config
+      homeAssistant.config.checkConfig.enabled: true
+      homeAssistant.packages.enabled: true
+      homeAssistant.packages.existingConfigMap: my-ha-packages
+      homeAssistant.themes.enabled: true
+      homeAssistant.themes.existingConfigMap: my-ha-themes
+    values:
+      - fixtures/init-containers.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-mqtt
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: install-hacs
+      - equal:
+          path: spec.template.spec.initContainers[1].image
+          value: docker.io/alpine:3.21
+      - equal:
+          path: spec.template.spec.initContainers[2].name
+          value: generate-secrets-yaml
+      - equal:
+          path: spec.template.spec.initContainers[3].name
+          value: copy-config
+      - equal:
+          path: spec.template.spec.initContainers[4].name
+          value: check-config
+      - equal:
+          path: spec.template.spec.initContainers[4].image
+          value: ghcr.io/home-assistant/home-assistant:2026.5
+      - equal:
+          path: spec.template.spec.initContainers[4].command[0]
+          value: hass
+
+  # check-config must not pick up package/theme volumes — it only validates the config file.
+  - it: check-config mounts only the config PVC even when packages and themes are enabled
+    set:
+      homeAssistant.config.enabled: true
+      homeAssistant.config.existingConfigMap: my-ha-config
+      homeAssistant.config.checkConfig.enabled: true
+      homeAssistant.packages.enabled: true
+      homeAssistant.packages.existingConfigMap: my-ha-packages
+      homeAssistant.themes.enabled: true
+      homeAssistant.themes.existingConfigMap: my-ha-themes
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: check-config
+      - equal:
+          path: spec.template.spec.initContainers[1].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+
+  - it: does not render initContainers when no tasks or user containers are configured
+    set:
+      homeAssistant.config.enabled: false
+      homeAssistant.packages.enabled: false
+      homeAssistant.themes.enabled: false
+      homeAssistant.initContainer.tasks.setupHACS.enabled: false
+      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers

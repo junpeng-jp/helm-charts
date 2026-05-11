@@ -1,0 +1,49 @@
+suite: Standard
+templates:
+  - templates/statefulset.yaml
+  - templates/service.yaml
+tests:
+  - it: renders a StatefulSet with minimal config
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/minimal-values.yaml
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/home-assistant/home-assistant:2026.5
+      - notExists:
+          path: spec.template.spec.initContainers
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.name
+          value: config
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: false
+      - notExists:
+          path: spec.template.spec.dnsPolicy
+
+  - it: renders a fully-configured StatefulSet with all features enabled
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/full-values.yaml
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - exists:
+          path: spec.template.spec.initContainers
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: local-path
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config
+            mountPath: /config
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-token
+            mountPath: /run/secrets/ha-token
+            readOnly: true

@@ -1,0 +1,54 @@
+suite: Networking
+templates:
+  - templates/service.yaml
+tests:
+  - it: renders a ClusterIP Service with port 8123 and correct selector labels
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].name
+          value: http
+      - equal:
+          path: spec.ports[0].port
+          value: 8123
+      - equal:
+          path: spec.ports[0].targetPort
+          value: http
+      - equal:
+          path: spec.ports[0].protocol
+          value: TCP
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: home-assistant
+
+  # The "app" service key gets the chart fullname; any other key gets fullname-suffix.
+  - it: names the app service with fullname and additional services with fullname-suffix
+    set:
+      networking.service.metrics.enabled: true
+      networking.service.metrics.type: ClusterIP
+      networking.service.metrics.ports.metrics.enabled: true
+      networking.service.metrics.ports.metrics.port: 9090
+      networking.service.metrics.ports.metrics.protocol: TCP
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant-metrics
+        documentIndex: 1
+
+  - it: does not render a Service document when the service entry is disabled
+    set:
+      networking.service.app.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

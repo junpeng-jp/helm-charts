@@ -1,15 +1,16 @@
-suite: HTTPRoute (Gateway API)
+suite: Ingress
 templates:
   - templates/httproute.yaml
+  - templates/ingressroute.yaml
 tests:
-  - it: does not render when gateway ingress is disabled
-    set:
-      ingress.gateway.enabled: false
+  - it: does not render an HTTPRoute when gateway is disabled
+    template: templates/httproute.yaml
     asserts:
       - hasDocuments:
           count: 0
 
-  - it: renders HTTPRoute with hostname and parentRef when enabled
+  - it: renders HTTPRoute with hostname, parentRef, and backend port when gateway is enabled
+    template: templates/httproute.yaml
     set:
       ingress.gateway.enabled: true
       ingress.gateway.hostnames[0]: ha.example.com
@@ -25,3 +26,29 @@ tests:
       - equal:
           path: spec.rules[0].backendRefs[0].port
           value: 8123
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+
+  - it: renders IngressRoute with host rule, entryPoints, and certResolver TLS when traefik is enabled
+    template: templates/ingressroute.yaml
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.entryPoints[0]: websecure
+      ingress.traefik.hostnames[0]: ha.example.com
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.certResolver: letsencrypt
+    asserts:
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: spec.routes[0].match
+          value: "Host(`ha.example.com`)"
+      - contains:
+          path: spec.entryPoints
+          content: websecure
+      - equal:
+          path: spec.tls.certResolver
+          value: letsencrypt
+      - notExists:
+          path: spec.tls.secretName

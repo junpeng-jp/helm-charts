@@ -1,0 +1,242 @@
+suite: Validations
+templates:
+  - templates/validations.yaml
+tests:
+  - it: renders no documents when all disabled
+    set:
+      homeAssistant.config.enabled: false
+      homeAssistant.packages.enabled: false
+      homeAssistant.themes.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when traefik tls is enabled without secretName or certResolver
+    set:
+      ingress.traefik.tls.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set"
+
+  - it: does not fail when traefik tls is enabled with secretName
+    set:
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.secretName: my-tls-secret
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not fail when traefik tls is enabled with certResolver
+    set:
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.certResolver: letsencrypt
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when config is enabled without existingConfigMap
+    set:
+      homeAssistant.config.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.config.existingConfigMap must be set when homeAssistant.config.enabled is true"
+
+  - it: fails when config is enabled without persistence
+    set:
+      homeAssistant.config.enabled: true
+      homeAssistant.config.existingConfigMap: my-ha-config
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.config.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml"
+
+  - it: fails when checkConfig is enabled without config enabled
+    set:
+      homeAssistant.config.enabled: false
+      homeAssistant.config.checkConfig.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.config.checkConfig.enabled requires homeAssistant.config.enabled to be true"
+
+  - it: fails when checkConfig is enabled without persistence (config.enabled catches it first)
+    set:
+      homeAssistant.config.enabled: true
+      homeAssistant.config.existingConfigMap: my-ha-config
+      homeAssistant.config.checkConfig.enabled: true
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.config.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml"
+
+  - it: does not fail when packages is enabled with persistence
+    set:
+      homeAssistant.packages.enabled: true
+      homeAssistant.packages.existingConfigMap: my-ha-packages
+      persistence.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when packages is enabled without existingConfigMap
+    set:
+      homeAssistant.packages.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.packages.existingConfigMap must be set when homeAssistant.packages.enabled is true"
+
+  - it: fails when packages is enabled without persistence
+    set:
+      homeAssistant.packages.enabled: true
+      homeAssistant.packages.existingConfigMap: my-ha-packages
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.packages.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/packages"
+
+  - it: does not fail when themes is enabled with persistence
+    set:
+      homeAssistant.themes.enabled: true
+      homeAssistant.themes.existingConfigMap: my-ha-themes
+      persistence.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when themes is enabled without existingConfigMap
+    set:
+      homeAssistant.themes.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.themes.existingConfigMap must be set when homeAssistant.themes.enabled is true"
+
+  - it: fails when themes is enabled without persistence
+    set:
+      homeAssistant.themes.enabled: true
+      homeAssistant.themes.existingConfigMap: my-ha-themes
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.themes.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/themes"
+
+  - it: fails when existingClaim and existingVolume are both set
+    set:
+      persistence.existingClaim: my-pvc
+      persistence.existingVolume: my-pv
+    asserts:
+      - failedTemplate:
+          errorMessage: "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one"
+
+  - it: fails when existingClaim is set but persistence is disabled
+    set:
+      persistence.enabled: false
+      persistence.existingClaim: my-pvc
+    asserts:
+      - failedTemplate:
+          errorMessage: "persistence.existingClaim has no effect when persistence.enabled is false; set persistence.enabled: true"
+
+  - it: fails when existingVolume is set but persistence is disabled
+    set:
+      persistence.enabled: false
+      persistence.existingVolume: my-pv
+    asserts:
+      - failedTemplate:
+          errorMessage: "persistence.existingVolume has no effect when persistence.enabled is false; set persistence.enabled: true"
+
+  - it: fails when replicaCount > 1 with ReadWriteOnce storage
+    set:
+      replicaCount: 2
+    asserts:
+      - failedTemplate:
+          errorMessage: "replicaCount > 1 is incompatible with ReadWriteOnce storage; use ReadWriteMany or set replicaCount: 1"
+
+  - it: does not fail when replicaCount > 1 with ReadWriteMany storage
+    set:
+      replicaCount: 2
+      persistence.accessModes:
+        - ReadWriteMany
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not fail when replicaCount > 1 and persistence is disabled
+    set:
+      replicaCount: 2
+      persistence.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when setupHACS is enabled without persistence
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.setupHACS requires persistence.enabled to be true"
+
+  - it: fails when setupHACS is enabled without version
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.setupHACS.version must be set when setupHACS is enabled"
+
+  - it: fails when setupSecretsYaml is enabled without secretName
+    set:
+      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.setupSecretsYaml.secretName must be set when setupSecretsYaml is enabled"
+
+  - it: fails when setupSecretsYaml is enabled without persistence
+    set:
+      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
+      homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.setupSecretsYaml requires persistence.enabled to be true"
+
+  - it: fails when secretVolumeMounts has duplicate volume names
+    set:
+      secretVolumeMounts:
+        - secretName: my-secret
+        - secretName: my-secret
+    asserts:
+      - failedTemplate:
+          errorMessage: 'secretVolumeMounts: duplicate volume name "my-secret"; set a unique .name on one of the entries to disambiguate'
+
+  - it: does not fail when secretVolumeMounts entries share secretName but have different names
+    set:
+      secretVolumeMounts:
+        - secretName: my-secret
+          mountPath: path-a
+        - secretName: my-secret
+          name: my-secret-b
+          mountPath: path-b
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when setupSecretsYaml.secretName is also listed in secretVolumeMounts
+    set:
+      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
+      homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
+      secretVolumeMounts:
+        - secretName: ha-secrets
+    asserts:
+      - failedTemplate:
+          errorMessage: 'secretVolumeMounts: secret "ha-secrets" is already used by homeAssistant.initContainer.tasks.setupSecretsYaml to generate /config/secrets.yaml; remove it from secretVolumeMounts'
+
+  - it: fails when user initContainers uses a reserved name
+    set:
+      initContainers:
+        - name: install-hacs
+          image: busybox:latest
+          command: ["sh", "-c", "echo hi"]
+    asserts:
+      - failedTemplate:
+          errorMessage: 'initContainers: name "install-hacs" is reserved by the chart; rename your init container'
+
