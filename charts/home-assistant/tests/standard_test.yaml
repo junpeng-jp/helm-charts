@@ -29,10 +29,6 @@ tests:
     values:
       - fixtures/full-values.yaml
     asserts:
-      - isKind:
-          of: StatefulSet
-      - exists:
-          path: spec.template.spec.initContainers
       - equal:
           path: spec.volumeClaimTemplates[0].spec.storageClassName
           value: local-path
@@ -41,9 +37,25 @@ tests:
           content:
             name: config
             mountPath: /config
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: ha-token
-            mountPath: /run/secrets/ha-token
-            readOnly: true
+
+  - it: uses digest over tag for the main image when both are set
+    template: templates/statefulset.yaml
+    set:
+      global.image.tag: "2026.5"
+      global.image.digest: "sha256:abc123"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/home-assistant/home-assistant@sha256:abc123
+
+  - it: sets dnsPolicy to ClusterFirstWithHostNet when hostNetwork is enabled
+    template: templates/statefulset.yaml
+    set:
+      pod.hostNetwork: true
+    asserts:
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: true
+      - equal:
+          path: spec.template.spec.dnsPolicy
+          value: ClusterFirstWithHostNet

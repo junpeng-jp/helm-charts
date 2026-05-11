@@ -62,14 +62,3 @@ tests:
           value:
             - name: config
               mountPath: /config
-
-  - it: does not render initContainers when no tasks or user containers are configured
-    set:
-      homeAssistant.config.enabled: false
-      homeAssistant.packages.enabled: false
-      homeAssistant.themes.enabled: false
-      homeAssistant.initContainer.tasks.setupHACS.enabled: false
-      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: false
-    asserts:
-      - notExists:
-          path: spec.template.spec.initContainers

@@ -30,6 +30,12 @@ tests:
           path: spec.rules[0].matches[0].path.type
           value: PathPrefix
 
+  - it: does not render an IngressRoute when traefik is disabled
+    template: templates/ingressroute.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
   - it: renders IngressRoute with host rule, entryPoints, and certResolver TLS when traefik is enabled
     template: templates/ingressroute.yaml
     set:

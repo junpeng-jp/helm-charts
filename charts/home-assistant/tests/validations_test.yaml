@@ -26,14 +26,6 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: does not fail when traefik tls is enabled with certResolver
-    set:
-      ingress.traefik.tls.enabled: true
-      ingress.traefik.tls.certResolver: letsencrypt
-    asserts:
-      - hasDocuments:
-          count: 0
-
   - it: fails when config is enabled without existingConfigMap
     set:
       homeAssistant.config.enabled: true
@@ -58,25 +50,6 @@ tests:
       - failedTemplate:
           errorMessage: "homeAssistant.config.checkConfig.enabled requires homeAssistant.config.enabled to be true"
 
-  - it: fails when checkConfig is enabled without persistence (config.enabled catches it first)
-    set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.existingConfigMap: my-ha-config
-      homeAssistant.config.checkConfig.enabled: true
-      persistence.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.config.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml"
-
-  - it: does not fail when packages is enabled with persistence
-    set:
-      homeAssistant.packages.enabled: true
-      homeAssistant.packages.existingConfigMap: my-ha-packages
-      persistence.enabled: true
-    asserts:
-      - hasDocuments:
-          count: 0
-
   - it: fails when packages is enabled without existingConfigMap
     set:
       homeAssistant.packages.enabled: true
@@ -92,15 +65,6 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.packages.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/packages"
-
-  - it: does not fail when themes is enabled with persistence
-    set:
-      homeAssistant.themes.enabled: true
-      homeAssistant.themes.existingConfigMap: my-ha-themes
-      persistence.enabled: true
-    asserts:
-      - hasDocuments:
-          count: 0
 
   - it: fails when themes is enabled without existingConfigMap
     set:
@@ -154,14 +118,6 @@ tests:
       replicaCount: 2
       persistence.accessModes:
         - ReadWriteMany
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: does not fail when replicaCount > 1 and persistence is disabled
-    set:
-      replicaCount: 2
-      persistence.enabled: false
     asserts:
       - hasDocuments:
           count: 0

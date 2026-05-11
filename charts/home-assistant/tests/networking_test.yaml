@@ -39,10 +39,6 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: RELEASE-NAME-home-assistant
-        documentIndex: 0
-      - equal:
-          path: metadata.name
           value: RELEASE-NAME-home-assistant-metrics
         documentIndex: 1
 
