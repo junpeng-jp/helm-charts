@@ -264,12 +264,12 @@
             }
           }
         },
-        "config": {
+        "configuration": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled":           { "type": "boolean" },
-            "existingConfigMap": { "type": "string" },
+            "enabled": { "type": "boolean" },
+            "config":  { "type": "object" },
             "checkConfig": {
               "type": "object",
               "additionalProperties": false,
@@ -279,20 +279,26 @@
             }
           }
         },
-        "packages": {
+        "gitops": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled":           { "type": "boolean" },
-            "existingConfigMap": { "type": "string" }
-          }
-        },
-        "themes": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled":           { "type": "boolean" },
-            "existingConfigMap": { "type": "string" }
+            "enabled": { "type": "boolean" },
+            "repos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "url"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "url":  { "type": "string" }
+                }
+              }
+            },
+            "knownHosts":         { "type": "string" },
+            "allowedSigners":     { "type": "string" },
+            "checkDirSizeLimit":  { "type": "string" }
           }
         }
       }

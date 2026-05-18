@@ -21,9 +21,8 @@
 {{- $needsPersistence := list
     (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupHACS.enabled        "msg" "homeAssistant.initContainer.tasks.setupHACS requires persistence.enabled to be true")
     (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled "msg" "homeAssistant.initContainer.tasks.setupSecretsYaml requires persistence.enabled to be true")
-    (dict "enabled" .Values.homeAssistant.config.enabled   "msg" "homeAssistant.config.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml")
-    (dict "enabled" .Values.homeAssistant.packages.enabled "msg" "homeAssistant.packages.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/packages")
-    (dict "enabled" .Values.homeAssistant.themes.enabled   "msg" "homeAssistant.themes.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/themes")
+    (dict "enabled" .Values.homeAssistant.configuration.enabled "msg" "homeAssistant.configuration.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml")
+    (dict "enabled" .Values.homeAssistant.gitops.enabled "msg" "homeAssistant.gitops.enabled requires persistence.enabled to be true")
 }}
 {{- range $needsPersistence }}
 {{- if and .enabled (not $.Values.persistence.enabled) }}
@@ -39,20 +38,19 @@
 {{- fail "homeAssistant.initContainer.tasks.setupSecretsYaml.secretName must be set when setupSecretsYaml is enabled" }}
 {{- end }}
 
-# config / packages / themes (each requires existingConfigMap)
-{{- $needsConfigMap := list
-    (dict "path" "homeAssistant.config"   "enabled" .Values.homeAssistant.config.enabled   "cm" .Values.homeAssistant.config.existingConfigMap)
-    (dict "path" "homeAssistant.packages" "enabled" .Values.homeAssistant.packages.enabled "cm" .Values.homeAssistant.packages.existingConfigMap)
-    (dict "path" "homeAssistant.themes"   "enabled" .Values.homeAssistant.themes.enabled   "cm" .Values.homeAssistant.themes.existingConfigMap)
-}}
-{{- range $needsConfigMap }}
-{{- if and .enabled (not .cm) }}
-{{- fail (printf "%s.existingConfigMap must be set when %s.enabled is true" .path .path) }}
+# configuration
+{{- if and .Values.homeAssistant.configuration.enabled (not .Values.homeAssistant.configuration.config) }}
+{{- fail "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true" }}
 {{- end }}
+{{- if and .Values.homeAssistant.configuration.checkConfig.enabled (not .Values.homeAssistant.configuration.enabled) }}
+{{- fail "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true" }}
 {{- end }}
 
-{{- if and .Values.homeAssistant.config.checkConfig.enabled (not .Values.homeAssistant.config.enabled) }}
-{{- fail "homeAssistant.config.checkConfig.enabled requires homeAssistant.config.enabled to be true" }}
+# gitops
+{{- if .Values.homeAssistant.gitops.enabled }}
+{{- if not .Values.homeAssistant.gitops.knownHosts }}
+{{- fail "homeAssistant.gitops.knownHosts must be set when gitops is enabled" }}
+{{- end }}
 {{- end }}
 
 # secretVolumeMounts
@@ -75,7 +73,7 @@
 {{- end }}
 
 # user initContainers reserved name check
-{{- $reservedInitNames := list "install-hacs" "generate-secrets-yaml" "copy-configuration" "copy-packages" "copy-themes" "check-config" }}
+{{- $reservedInitNames := list "gitops-setup" "bootstrap" "install-hacs" "generate-secrets-yaml" "copy-configuration" "check-config" }}
 {{- range .Values.initContainers }}
 {{- if has .name $reservedInitNames }}
 {{- fail (printf "initContainers: name %q is reserved by the chart; rename your init container" .name) }}

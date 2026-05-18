@@ -23,6 +23,10 @@ tests:
           value: false
       - notExists:
           path: spec.template.spec.dnsPolicy
+      - notExists:
+          path: spec.template.spec.securityContext
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext
 
   - it: renders a fully-configured StatefulSet with all features enabled
     template: templates/statefulset.yaml
@@ -37,6 +41,15 @@ tests:
           content:
             name: config
             mountPath: /config
+      - notExists:
+          path: spec.template.spec.containers[1]
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-sync-script
+            mountPath: /config/gitops/scripts/sync.sh
+            subPath: sync.sh
+            readOnly: true
 
   - it: uses digest over tag for the main image when both are set
     template: templates/statefulset.yaml

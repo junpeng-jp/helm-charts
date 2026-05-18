@@ -72,6 +72,10 @@ resources:
   limits:
     memory: 1Gi
 
+# podSecurityContext and containerSecurityContext are intentionally omitted.
+# home-assistant uses s6-overlay as its init system, which must start as root and write to /run.
+# Setting runAsNonRoot or readOnlyRootFilesystem on the main container causes an immediate crash.
+
 pod:
   annotations: {}
   nodeSelector: {}
@@ -139,9 +143,8 @@ monitor:
 # Home Assistant application configuration.
 homeAssistant:
   # initContainer - configuration for the utility init containers that run before Home Assistant.
+  # Override here to change the image for all of them at once.
   initContainer:
-    # image - default image used by all utility init containers.
-    # Override here to change the image for all of them at once.
     image:
       registry: docker.io
       repository: alpine
@@ -167,90 +170,64 @@ homeAssistant:
         enabled: false
         secretName: ""  # required when enabled is true
 
-  # config - seeds /config/configuration.yaml on every pod restart.
+  # configuration - bootstraps /config/configuration.yaml on first run only (write-if-not-exists).
   # See: https://www.home-assistant.io/docs/configuration/
   #
-  # Requires persistence.enabled. The init container overwrites this file on every restart,
-  # so changes made via the file editor or VS Code add-on are lost on the next restart.
+  # Requires persistence.enabled. The init container writes /config/configuration.yaml only if the
+  # file does not yet exist on the PVC - subsequent pod restarts leave the file untouched, so changes
+  # made via the file editor or VS Code add-on are preserved.
   #
-  # To enable packages and themes, your configuration.yaml must include the directives below.
-  # You can add them to the ConfigMap data alongside your other settings:
+  # The chart renders a ConfigMap (<release>-home-assistant-configuration) from the inline config
+  # map below. Specify your configuration.yaml content as a nested YAML structure under config.
   #
-  #   packages: !include_dir_merge_named packages/
-  #   frontend:
-  #     themes: !include_dir_merge_named themes/
+  # Example:
   #
-  # Example ConfigMap:
-  #
-  #   apiVersion: v1
-  #   kind: ConfigMap
-  #   metadata:
-  #     name: my-home-assistant-config
-  #   data:
-  #     configuration.yaml: |
-  #       homeassistant:
-  #         name: Home
-  #         latitude: 37.7749
-  #         longitude: -122.4194
-  #         unit_system: metric
-  #         time_zone: America/Los_Angeles
-  #       http:
-  #         use_x_forwarded_for: true
-  #         trusted_proxies:
-  #           - 10.0.0.0/8
-  config:
+  #   homeAssistant:
+  #     configuration:
+  #       enabled: true
+  #       config:
+  #         homeassistant:
+  #           name: Home
+  #           latitude: 37.7749
+  #           longitude: -122.4194
+  #           unit_system: metric
+  #           time_zone: America/Los_Angeles
+  #         http:
+  #           use_x_forwarded_for: true
+  #           trusted_proxies:
+  #             - 10.0.0.0/8
+  configuration:
     enabled: false
-    existingConfigMap: ""  # required when enabled is true; must contain key "configuration.yaml"
+    config: {}  # nested key-value map; serialised to YAML as /config/configuration.yaml content
     checkConfig:
-      enabled: false  # runs 'hass --script check_config' in an init container before startup; requires config.enabled and persistence.enabled
+      enabled: false  # runs 'hass --script check_config' in an init container before startup; requires configuration.enabled and persistence.enabled
 
-  # packages - seeds each file into /config/packages/ on every pod restart.
-  # See: https://www.home-assistant.io/docs/configuration/packages/
+  # gitops - mounts a sync script into the Home Assistant container for git-managed configuration.
   #
-  # Requires persistence.enabled and the packages include directive in configuration.yaml (see config above).
-  # The init container overwrites these files on every restart.
+  # The bundled sync.sh fetches a git ref, validates it with 'hass --script check_config',
+  # and copies specified paths to their destinations. Trigger it from a Home Assistant
+  # shell_command automation, passing --repo, --ref, and --copy arguments.
   #
-  # Example ConfigMap (each key becomes a file under /config/packages/):
+  # The SSH deploy key must be mounted via secretVolumeMounts with mountPath: gitops so the key
+  # appears at /run/secrets/gitops/<key-name>. The script expects it at /run/secrets/gitops/id_ed25519.
   #
-  #   apiVersion: v1
-  #   kind: ConfigMap
-  #   metadata:
-  #     name: my-home-assistant-packages
-  #   data:
-  #     lights.yaml: |
-  #       automation:
-  #         - alias: Turn on lights at sunset
-  #           trigger:
-  #             platform: sun
-  #             event: sunset
-  #           action:
-  #             service: light.turn_on
-  #             target:
-  #               area_id: living_room
-  packages:
+  # Requires persistence.enabled.
+  gitops:
     enabled: false
-    existingConfigMap: ""
 
-  # themes - seeds each file into /config/themes/ on every pod restart.
-  # See: https://www.home-assistant.io/integrations/frontend/#defining-themes
-  #
-  # Requires persistence.enabled and the frontend.themes include directive in configuration.yaml (see config above).
-  # The init container overwrites these files on every restart.
-  #
-  # Example ConfigMap (each key becomes a file under /config/themes/):
-  #
-  #   apiVersion: v1
-  #   kind: ConfigMap
-  #   metadata:
-  #     name: my-home-assistant-themes
-  #   data:
-  #     dark_mode.yaml: |
-  #       dark_mode:
-  #         primary-color: "#03a9f4"
-  #         accent-color: "#ff9800"
-  #         primary-background-color: "#111111"
-  #         card-background-color: "#1c1c1c"
-  #         primary-text-color: "#e1e1e1"
-  themes:
-    enabled: false
-    existingConfigMap: ""
+    # Git repositories to register. An init container writes the remote URL for each repo to
+    # /config/gitops/<name>/remote on the PVC before Home Assistant starts.
+    repos: []
+    # - name: ha-config
+    #   url: git@github.com:your-org/ha-config.git
+
+    # SSH known_hosts content for verifying the git host's identity. Required when enabled.
+    knownHosts: ""
+
+    # SSH allowed_signers content for commit/tag signature verification.
+    # When set, every sync verifies the fetched commit or annotated tag against these signers.
+    allowedSigners: ""
+
+    # Maximum size of the in-memory tmpfs used as the git worktree checkout directory.
+    # Increase if your config repo is large.
+    checkDirSizeLimit: 256Mi

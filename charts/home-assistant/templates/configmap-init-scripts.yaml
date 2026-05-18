@@ -1,0 +1,11 @@
+{{- if or .Values.homeAssistant.initContainer.tasks.setupHACS.enabled .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled .Values.homeAssistant.configuration.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-init-scripts
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  bootstrap.sh: |
+    {{- .Files.Get "scripts/bootstrap.sh" | nindent 4 }}
+{{- end }}

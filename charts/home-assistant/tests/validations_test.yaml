@@ -2,11 +2,7 @@ suite: Validations
 templates:
   - templates/validations.yaml
 tests:
-  - it: renders no documents when all disabled
-    set:
-      homeAssistant.config.enabled: false
-      homeAssistant.packages.enabled: false
-      homeAssistant.themes.enabled: false
+  - it: renders no documents with default values
     asserts:
       - hasDocuments:
           count: 0
@@ -26,61 +22,31 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: fails when config is enabled without existingConfigMap
+  - it: fails when configuration is enabled without config
     set:
-      homeAssistant.config.enabled: true
+      homeAssistant.configuration.enabled: true
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.config.existingConfigMap must be set when homeAssistant.config.enabled is true"
+          errorMessage: "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true"
 
-  - it: fails when config is enabled without persistence
+  - it: fails when configuration is enabled without persistence
     set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.existingConfigMap: my-ha-config
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
       persistence.enabled: false
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.config.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml"
+          errorMessage: "homeAssistant.configuration.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml"
 
-  - it: fails when checkConfig is enabled without config enabled
+  - it: fails when checkConfig is enabled without configuration enabled
     set:
-      homeAssistant.config.enabled: false
-      homeAssistant.config.checkConfig.enabled: true
+      homeAssistant.configuration.enabled: false
+      homeAssistant.configuration.checkConfig.enabled: true
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.config.checkConfig.enabled requires homeAssistant.config.enabled to be true"
-
-  - it: fails when packages is enabled without existingConfigMap
-    set:
-      homeAssistant.packages.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.packages.existingConfigMap must be set when homeAssistant.packages.enabled is true"
-
-  - it: fails when packages is enabled without persistence
-    set:
-      homeAssistant.packages.enabled: true
-      homeAssistant.packages.existingConfigMap: my-ha-packages
-      persistence.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.packages.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/packages"
-
-  - it: fails when themes is enabled without existingConfigMap
-    set:
-      homeAssistant.themes.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.themes.existingConfigMap must be set when homeAssistant.themes.enabled is true"
-
-  - it: fails when themes is enabled without persistence
-    set:
-      homeAssistant.themes.enabled: true
-      homeAssistant.themes.existingConfigMap: my-ha-themes
-      persistence.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.themes.enabled requires persistence.enabled; the init container copies ConfigMap files into the PVC at /config/themes"
+          errorMessage: "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true"
 
   - it: fails when existingClaim and existingVolume are both set
     set:
@@ -196,3 +162,19 @@ tests:
       - failedTemplate:
           errorMessage: 'initContainers: name "install-hacs" is reserved by the chart; rename your init container'
 
+  - it: fails when gitops is enabled without knownHosts
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.knownHosts must be set when gitops is enabled"
+
+  - it: fails when gitops is enabled without persistence
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.enabled requires persistence.enabled to be true"

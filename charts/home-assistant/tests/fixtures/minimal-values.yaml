@@ -6,20 +6,19 @@ persistence:
     - ReadWriteOnce
 
 homeAssistant:
-  config:
+  configuration:
     enabled: false
+    config: {}
     checkConfig:
       enabled: false
-  packages:
-    enabled: false
-  themes:
-    enabled: false
   initContainer:
     tasks:
       setupHACS:
         enabled: false
       setupSecretsYaml:
         enabled: false
+  gitops:
+    enabled: false
 
 ingress:
   gateway:
