@@ -180,6 +180,10 @@ spec:
               mountPath: /run/secrets/gitops/known_hosts
               subPath: known_hosts
               readOnly: true
+            - name: gitops-ssh-key
+              mountPath: /run/secrets/gitops/id_ed25519
+              subPath: id_ed25519
+              readOnly: true
             - name: gitops-ha-check
               mountPath: /run/ha-check
             {{- if .Values.homeAssistant.gitops.allowedSigners }}
@@ -227,6 +231,10 @@ spec:
         - name: gitops-known-hosts
           configMap:
             name: {{ include "home-assistant.fullname" . }}-gitops-known-hosts
+        - name: gitops-ssh-key
+          secret:
+            secretName: {{ .Values.homeAssistant.gitops.sshKeySecret }}
+            defaultMode: 0400
         - name: gitops-ha-check
           emptyDir:
             medium: Memory

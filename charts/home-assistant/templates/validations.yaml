@@ -51,6 +51,12 @@
 {{- if not .Values.homeAssistant.gitops.knownHosts }}
 {{- fail "homeAssistant.gitops.knownHosts must be set when gitops is enabled" }}
 {{- end }}
+{{- if not .Values.homeAssistant.gitops.sshKeySecret }}
+{{- fail "homeAssistant.gitops.sshKeySecret must be set when gitops is enabled" }}
+{{- end }}
+{{- if empty .Values.homeAssistant.gitops.repos }}
+{{- fail "homeAssistant.gitops.repos must have at least one entry when gitops is enabled" }}
+{{- end }}
 {{- end }}
 
 # secretVolumeMounts

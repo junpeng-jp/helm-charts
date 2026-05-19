@@ -170,10 +170,36 @@ tests:
       - failedTemplate:
           errorMessage: "homeAssistant.gitops.knownHosts must be set when gitops is enabled"
 
+  - it: fails when gitops is enabled without sshKeySecret
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ""
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.sshKeySecret must be set when gitops is enabled"
+
+  - it: fails when gitops is enabled without repos
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.repos: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.repos must have at least one entry when gitops is enabled"
+
   - it: fails when gitops is enabled without persistence
     set:
       homeAssistant.gitops.enabled: true
       homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
       persistence.enabled: false
     asserts:
       - failedTemplate:

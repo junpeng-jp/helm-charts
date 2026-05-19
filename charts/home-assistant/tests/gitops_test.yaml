@@ -150,3 +150,28 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: mounts ssh key from sshKeySecret at /run/secrets/gitops/id_ed25519
+    template: templates/statefulset.yaml
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-ssh-key
+            secret:
+              secretName: ha-gitops-ssh
+              defaultMode: 256
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+            mountPath: /run/secrets/gitops/id_ed25519
+            subPath: id_ed25519
+            readOnly: true

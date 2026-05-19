@@ -296,6 +296,7 @@
                 }
               }
             },
+            "sshKeySecret":       { "type": "string" },
             "knownHosts":         { "type": "string" },
             "allowedSigners":     { "type": "string" },
             "checkDirSizeLimit":  { "type": "string" }

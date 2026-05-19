@@ -9,8 +9,6 @@ initContainers:
 secretVolumeMounts:
   - secretName: ha-token
     mountPath: ha-token
-  - secretName: ha-gitops-ssh-key
-    mountPath: gitops
 
 ingress:
   gateway:
@@ -81,5 +79,6 @@ homeAssistant:
     repos:
       - name: ha-config
         url: "git@github.com:example/ha-config.git"
+    sshKeySecret: ha-gitops-ssh-key
     knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
     allowedSigners: ""

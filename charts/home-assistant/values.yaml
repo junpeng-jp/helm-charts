@@ -208,18 +208,22 @@ homeAssistant:
   # and copies specified paths to their destinations. Trigger it from a Home Assistant
   # shell_command automation, passing --repo, --ref, and --copy arguments.
   #
-  # The SSH deploy key must be mounted via secretVolumeMounts with mountPath: gitops so the key
-  # appears at /run/secrets/gitops/<key-name>. The script expects it at /run/secrets/gitops/id_ed25519.
-  #
   # Requires persistence.enabled.
   gitops:
     enabled: false
 
     # Git repositories to register. An init container writes the remote URL for each repo to
-    # /config/gitops/<name>/remote on the PVC before Home Assistant starts.
+    # /config/gitops/<name>/remote on the PVC before Home Assistant starts. Required when enabled.
     repos: []
     # - name: ha-config
     #   url: git@github.com:your-org/ha-config.git
+
+    # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
+    # The Secret must have a key named 'id_ed25519' holding the private key:
+    #   kubectl create secret generic ha-gitops-ssh \
+    #     --from-file=id_ed25519=./ssh/id_ed25519
+    # The chart mounts the key at /run/secrets/gitops/id_ed25519 (mode 0400).
+    sshKeySecret: ""
 
     # SSH known_hosts content for verifying the git host's identity. Required when enabled.
     knownHosts: ""
