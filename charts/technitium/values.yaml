@@ -17,15 +17,15 @@ serviceAccount:
   name: ""      # defaults to fullname when create: true, "default" otherwise
   annotations: {}
 
-initContainers: []  # full Kubernetes init container specs
+initContainers: []
 
 # Raw env passthrough — use for settings not modelled in config.
 env: []
 
-secretVolumeMounts: []  # mounts K8s Secrets read-only under /run/secrets/<secretName>/
+secretVolumeMounts: []
 
-extraVolumes: []        # full Kubernetes volume specs
-extraVolumeMounts: []   # full Kubernetes volumeMount specs
+extraVolumes: []
+extraVolumeMounts: []
 
 livenessProbe:
   enabled: true
@@ -57,7 +57,11 @@ podSecurityContext:
   runAsUser: 10004
   runAsGroup: 10004
   fsGroup: 10004
-  sysctls: []  # kernel parameters scoped to the pod network namespace
+  sysctls: []
+  # Recommended sysctl to expand the local port range (mirrors the docker-compose default):
+  # sysctls:
+  #   - name: net.ipv4.ip_local_port_range
+  #     value: "1024 65535"
 
 containerSecurityContext:
   allowPrivilegeEscalation: false
@@ -126,7 +130,7 @@ networking:
           protocol: TCP
           enabled: false
 
-ingress:  # at most one may be enabled at a time
+ingress:
   gateway:
     enabled: false
     parentRefs:
@@ -173,7 +177,7 @@ monitor:
     port: http
     interval: 30s
     scrapeTimeout: 10s
-    labels: {}         # must match Prometheus serviceMonitorSelector
+    labels: {}
 
 # Technitium server configuration — rendered as container env vars.
 # Use env[] for any setting not modelled here.
