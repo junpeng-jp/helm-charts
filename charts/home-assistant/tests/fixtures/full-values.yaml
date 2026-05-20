@@ -29,8 +29,6 @@ persistence:
   size: 10Gi
   annotations: {}
   labels: {}
-  existingClaim: ""
-  existingVolume: ""
 
 monitor:
   metric:
@@ -58,16 +56,28 @@ homeAssistant:
         enabled: true
         secretName: ha-secrets
 
-  config:
+  configuration:
     enabled: true
-    existingConfigMap: my-ha-config
+    config:
+      homeassistant:
+        name: Home
+        latitude: 37.7749
+        longitude: -122.4194
+        unit_system: metric
+        time_zone: America/Los_Angeles
+      http:
+        use_x_forwarded_for: true
+        trusted_proxies:
+          - 10.0.0.0/8
     checkConfig:
       enabled: true
 
-  packages:
+  gitops:
     enabled: true
-    existingConfigMap: my-ha-packages
-
-  themes:
-    enabled: true
-    existingConfigMap: my-ha-themes
+    repos:
+      - name: ha-config
+        url: "git@github.com:example/ha-config.git"
+    sshKeySecret: ha-gitops-ssh-key
+    sshKeyName: id_ed25519
+    knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+    allowedSigners: "user@example.com namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"

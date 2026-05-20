@@ -1,0 +1,11 @@
+{{- if .Values.homeAssistant.gitops.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-gitops-sync-script
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  sync.sh: |-
+    {{- .Files.Get "scripts/sync.sh" | nindent 4 }}
+{{- end }}

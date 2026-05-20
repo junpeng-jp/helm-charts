@@ -1,7 +1,4 @@
 {{- if .Values.ingress.traefik.enabled }}
-{{- if not .Values.networking.service.app.enabled }}
-{{- fail "ingress.traefik requires networking.service.app to be enabled" }}
-{{- end }}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -14,7 +11,6 @@ spec:
   routes:
     {{- range .Values.ingress.traefik.hostnames }}
     - match: Host(`{{ . }}`)
-      kind: Rule
       services:
         - name: {{ include "home-assistant.fullname" $ }}
           port: http

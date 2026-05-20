@@ -1,0 +1,183 @@
+suite: GitOps
+templates:
+  - templates/statefulset.yaml
+  - templates/configmap-gitops-known-hosts.yaml
+  - templates/configmap-gitops-sync-script.yaml
+  - templates/configmap-gitops-allowed-signers.yaml
+tests:
+  - it: gitops-setup init container writes repo remote URLs via printf in command
+    template: templates/statefulset.yaml
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
+        - name: ha-blueprints
+          url: "git@github.com:example/ha-blueprints.git"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: gitops-setup
+      - notExists:
+          path: spec.template.spec.initContainers[0].env
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "git@github.com:example/ha-config.git"
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "git@github.com:example/ha-blueprints.git"
+
+  - it: renders sync-script ConfigMap with sync.sh content when gitops is enabled
+    template: templates/configmap-gitops-sync-script.yaml
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: metadata.name
+          pattern: -gitops-sync-script$
+      - isNotEmpty:
+          path: data["sync.sh"]
+      - matchRegex:
+          path: data["sync.sh"]
+          pattern: "GIT_SSH_COMMAND"
+
+  - it: renders known-hosts ConfigMap with knownHosts value when gitops is enabled
+    template: templates/configmap-gitops-known-hosts.yaml
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: metadata.name
+          pattern: -gitops-known-hosts$
+      - matchRegex:
+          path: data.known_hosts
+          pattern: "github.com"
+
+  - it: gitops volumes, mounts, and ssh key are configured correctly when gitops is enabled
+    template: templates/statefulset.yaml
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-sync-script
+            configMap:
+              name: RELEASE-NAME-home-assistant-gitops-sync-script
+              defaultMode: 493
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-sync-script
+            mountPath: /config/gitops/scripts/sync.sh
+            subPath: sync.sh
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-known-hosts
+            mountPath: /run/secrets/gitops/known_hosts
+            subPath: known_hosts
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-ha-check
+            emptyDir:
+              medium: Memory
+              sizeLimit: 256Mi
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ha-check
+            mountPath: /run/ha-check
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-ssh-key
+            secret:
+              secretName: ha-gitops-ssh
+              defaultMode: 256
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+            mountPath: /run/secrets/gitops/ssh_key
+            subPath: id_ed25519
+            readOnly: true
+
+  - it: uses sshKeyName as subPath when overriding the default key name
+    template: templates/statefulset.yaml
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.sshKeyName: id_rsa
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+            mountPath: /run/secrets/gitops/ssh_key
+            subPath: id_rsa
+            readOnly: true
+
+  - it: renders allowed-signers ConfigMap and mounts it at /run/secrets/gitops/allowed_signers when allowedSigners is set
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.allowedSigners: "user@example.com namespaces=\"git\" ssh-ed25519 AAAA..."
+    asserts:
+      - template: templates/configmap-gitops-allowed-signers.yaml
+        isKind:
+          of: ConfigMap
+      - template: templates/configmap-gitops-allowed-signers.yaml
+        matchRegex:
+          path: metadata.name
+          pattern: -gitops-allowed-signers$
+      - template: templates/configmap-gitops-allowed-signers.yaml
+        matchRegex:
+          path: data.allowed_signers
+          pattern: "user@example.com"
+      - template: templates/statefulset.yaml
+        contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-allowed-signers
+            mountPath: /run/secrets/gitops/allowed_signers
+            subPath: allowed_signers
+            readOnly: true
+
+  - it: does not render known-hosts ConfigMap when gitops is disabled
+    template: templates/configmap-gitops-known-hosts.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render allowed-signers ConfigMap when allowedSigners is empty
+    template: templates/configmap-gitops-allowed-signers.yaml
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.allowedSigners: ""
+    asserts:
+      - hasDocuments:
+          count: 0
+

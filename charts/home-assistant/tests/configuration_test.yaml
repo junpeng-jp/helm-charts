@@ -1,76 +1,58 @@
 suite: Configuration
 templates:
   - templates/statefulset.yaml
+  - templates/configmap-configuration.yaml
 tests:
-  - it: renders ConfigMap volumes for config, packages, and themes but does not mount them in the main container
+  - it: renders configuration ConfigMap with configuration.yaml key
+    template: templates/configmap-configuration.yaml
     set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.existingConfigMap: my-ha-config
-      homeAssistant.packages.enabled: true
-      homeAssistant.packages.existingConfigMap: my-ha-packages
-      homeAssistant.themes.enabled: true
-      homeAssistant.themes.existingConfigMap: my-ha-themes
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
     asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: ha-config
-            configMap:
-              name: my-ha-config
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: ha-packages
-            configMap:
-              name: my-ha-packages
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: ha-themes
-            configMap:
-              name: my-ha-themes
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: ha-config
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: ha-packages
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: ha-themes
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: metadata.name
+          pattern: -configuration$
+      - equal:
+          path: data["configuration.yaml"]
+          value: |
+            homeassistant:
+              name: Home
 
-  # Setting existingConfigMap does not alone create volumes — the enabled flag gates rendering.
-  - it: does not render ConfigMap volumes when features are disabled even if existingConfigMap is set
+  - it: does not render configuration ConfigMap when disabled
+    template: templates/configmap-configuration.yaml
     set:
-      homeAssistant.config.enabled: false
-      homeAssistant.config.existingConfigMap: my-ha-config
-      homeAssistant.packages.enabled: false
-      homeAssistant.packages.existingConfigMap: my-ha-packages
-      homeAssistant.themes.enabled: false
-      homeAssistant.themes.existingConfigMap: my-ha-themes
+      homeAssistant.configuration.enabled: false
     asserts:
-      - notExists:
-          path: spec.template.spec.volumes
+      - hasDocuments:
+          count: 0
 
-  - it: copy-config init container mounts the ConfigMap read-only and the config PVC for writing
+  - it: bootstrap init container mounts bootstrap config read-only and sets CONFIG_ENABLED; ConfigMap volume not in main container
+    template: templates/statefulset.yaml
     set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.existingConfigMap: my-ha-config
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: copy-config
+          value: bootstrap
       - contains:
           path: spec.template.spec.initContainers[0].volumeMounts
           content:
-            name: ha-config
-            mountPath: /run/ha-config
+            name: ha-bootstrap-config
+            mountPath: /run/ha-bootstrap-config
             readOnly: true
       - contains:
           path: spec.template.spec.initContainers[0].volumeMounts
           content:
             name: config
             mountPath: /config
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-bootstrap-config
