@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-headless
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: {{ .Values.networking.headlessService.publishNotReadyAddresses }}
+  selector:
+    {{- include "home-assistant.selectorLabels" . | nindent 4 }}
+  {{- if .Values.networking.service.app.enabled }}
+  ports:
+    {{- range $portName := keys .Values.networking.service.app.ports | sortAlpha }}
+    {{- $port := index $.Values.networking.service.app.ports $portName }}
+    {{- if ne $port.enabled false }}
+    - name: {{ $portName }}
+      port: {{ $port.port }}
+      targetPort: {{ $portName }}
+      protocol: {{ $port.protocol }}
+    {{- end }}
+    {{- end }}
+  {{- end }}

@@ -6,6 +6,6 @@ metadata:
   labels:
     {{- include "home-assistant.labels" . | nindent 4 }}
 data:
-  sync.sh: |
+  sync.sh: |-
     {{- .Files.Get "scripts/sync.sh" | nindent 4 }}
 {{- end }}

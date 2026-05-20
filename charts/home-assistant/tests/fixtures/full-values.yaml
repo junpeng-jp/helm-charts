@@ -29,8 +29,6 @@ persistence:
   size: 10Gi
   annotations: {}
   labels: {}
-  existingClaim: ""
-  existingVolume: ""
 
 monitor:
   metric:
@@ -80,5 +78,6 @@ homeAssistant:
       - name: ha-config
         url: "git@github.com:example/ha-config.git"
     sshKeySecret: ha-gitops-ssh-key
+    sshKeyName: id_ed25519
     knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
-    allowedSigners: ""
+    allowedSigners: "user@example.com namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"

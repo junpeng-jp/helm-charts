@@ -10,17 +10,31 @@ global:
     digest: ""
     pullPolicy: IfNotPresent
     pullSecrets: []
+  testImage:
+    registry: docker.io
+    repository: busybox
+    tag: "1.37"
+    digest: ""
+    pullPolicy: IfNotPresent
 
 nameOverride: ""
 fullnameOverride: ""
-# TODO: rethink where replicaCount config sits
 replicaCount: 1
+podManagementPolicy: OrderedReady
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    partition: 0
 
 serviceAccount:
   create: false
   name: ""
   annotations: {}
 
+# Extra init containers injected after the chart-managed init containers (gitops-setup, bootstrap)
+# and before Home Assistant starts. Use this for tasks that depend on bootstrap having already run
+# (e.g. secrets.yaml written, HACS installed, configuration.yaml in place).
+# Names "gitops-setup", "bootstrap", and "check-config" are reserved by the chart.
 initContainers: []
 
 env:
@@ -30,17 +44,27 @@ env:
 # secretVolumeMounts mounts Kubernetes Secrets into the main container under /run/secrets/.
 # For Home Assistant's secrets.yaml, see homeAssistant.initContainer.tasks.setupSecretsYaml below.
 #
+# Fields:
+#   secretName: (required) name of the Kubernetes Secret to mount.
+#   mountPath:  subdirectory under /run/secrets/ where the secret is mounted.
+#               Defaults to secretName.
+#   name:       K8s volume name (must be unique across all entries).
+#               Required when the same secretName appears more than once — use it to
+#               disambiguate the volume while mountPath controls where each copy lands.
+#               Defaults to secretName.
+#
 # Example:
 #   secretVolumeMounts:
-#     - secretName: my-secret             # mounts at /run/secrets/my-secret
+#     - secretName: my-secret                  # → /run/secrets/my-secret
 #     - secretName: my-secret
-#       mountPath: alt-path               # mounts at /run/secrets/alt-path
+#       mountPath: my-secret-alt               # → /run/secrets/my-secret-alt
+#       name: my-secret-alt                    # required: unique volume name for the second entry
 secretVolumeMounts: []
 extraVolumes: []
 extraVolumeMounts: []
 
 startupProbe:
-  enabled: true
+  enabled: false
   # Enable for instances with many integrations or slow hardware - prevents liveness
   # probe restart loops during long cold starts. Allows up to 3 min: 18 × 10s.
   httpGet:
@@ -63,7 +87,7 @@ readinessProbe:
     port: http
   initialDelaySeconds: 30
   periodSeconds: 10
-  failureThreshold: 10
+  failureThreshold: 10  # HA is slow to report ready; 10 × 10s = 100s total grace period
 
 resources:
   requests:
@@ -71,6 +95,7 @@ resources:
     cpu: 100m
   limits:
     memory: 1Gi
+    # cpu limit intentionally omitted - Home Assistant automations can cause brief CPU spikes
 
 # podSecurityContext and containerSecurityContext are intentionally omitted.
 # home-assistant uses s6-overlay as its init system, which must start as root and write to /run.
@@ -84,13 +109,14 @@ pod:
   hostNetwork: false    # Enable only if you want to have auto-discovery of wifi devices via mDNS
 
 networking:
+  headlessService:
+    publishNotReadyAddresses: true
   service:
     app:
       enabled: true
       type: ClusterIP
       ports:
         http:
-          enabled: true
           port: 8123
           protocol: TCP
 
@@ -152,6 +178,11 @@ homeAssistant:
       digest: ""          # takes precedence over tag when set (e.g. sha256:abc123)
       pullPolicy: IfNotPresent
 
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 50m
+
     tasks:
       # setupHACS - installs HACS (Home Assistant Community Store) via an init container
       # before Home Assistant starts. The init container writes into /config/custom_components/hacs.
@@ -159,6 +190,7 @@ homeAssistant:
       setupHACS:
         enabled: false
         version: "2.0.5"   # required when enabled
+        sha256: ""          # optional; if set, verifies the downloaded zip before installing
 
       # setupSecretsYaml - mounts a Kubernetes Secret as a volume and writes its
       # key-value pairs to /config/secrets.yaml before Home Assistant starts.
@@ -201,6 +233,10 @@ homeAssistant:
     config: {}  # nested key-value map; serialised to YAML as /config/configuration.yaml content
     checkConfig:
       enabled: false  # runs 'hass --script check_config' in an init container before startup; requires configuration.enabled and persistence.enabled
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
 
   # gitops - mounts a sync script into the Home Assistant container for git-managed configuration.
   #
@@ -219,11 +255,15 @@ homeAssistant:
     #   url: git@github.com:your-org/ha-config.git
 
     # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
-    # The Secret must have a key named 'id_ed25519' holding the private key:
+    # Create the secret with the key name matching sshKeyName below:
     #   kubectl create secret generic ha-gitops-ssh \
     #     --from-file=id_ed25519=./ssh/id_ed25519
-    # The chart mounts the key at /run/secrets/gitops/id_ed25519 (mode 0400).
+    # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
     sshKeySecret: ""
+
+    # Key name inside the sshKeySecret to use as the deploy key.
+    # Change this if your Secret uses a different key name (e.g. id_rsa, id_ecdsa).
+    sshKeyName: id_ed25519
 
     # SSH known_hosts content for verifying the git host's identity. Required when enabled.
     knownHosts: ""

@@ -1,6 +1,44 @@
+# networking: each enabled service must have at least one enabled port
+{{- range $svcName := keys .Values.networking.service | sortAlpha }}
+{{- $svc := index $.Values.networking.service $svcName }}
+{{- if $svc.enabled }}
+{{- $check := dict "hasPorts" false }}
+{{- range $portName := keys $svc.ports | sortAlpha }}
+{{- $port := index $svc.ports $portName }}
+{{- if ne $port.enabled false }}
+{{- $_ := set $check "hasPorts" true }}
+{{- end }}
+{{- end }}
+{{- if not (get $check "hasPorts") }}
+{{- fail (printf "networking.service.%s is enabled but has no enabled ports; enable at least one port or disable the service" $svcName) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 # ingress
+{{- if and .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled }}
+{{- fail "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)" }}
+{{- end }}
+{{- if and .Values.ingress.gateway.enabled (not .Values.networking.service.app.enabled) }}
+{{- fail "ingress.gateway requires networking.service.app to be enabled" }}
+{{- end }}
+{{- if and .Values.ingress.traefik.enabled (not .Values.networking.service.app.enabled) }}
+{{- fail "ingress.traefik requires networking.service.app to be enabled" }}
+{{- end }}
 {{- if and .Values.ingress.traefik.tls.enabled (not .Values.ingress.traefik.tls.secretName) (not .Values.ingress.traefik.tls.certResolver) }}
 {{- fail "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set" }}
+{{- end }}
+{{- if and .Values.ingress.traefik.enabled (empty .Values.ingress.traefik.hostnames) }}
+{{- fail "ingress.traefik.hostnames must have at least one entry when traefik ingress is enabled" }}
+{{- end }}
+{{- if and .Values.ingress.gateway.enabled (empty .Values.ingress.gateway.hostnames) }}
+{{- fail "ingress.gateway.hostnames must have at least one entry when gateway ingress is enabled" }}
+{{- end }}
+{{- if and .Values.ingress.gateway.enabled (not (index .Values.networking.service.app.ports "http")) }}
+{{- fail "ingress.gateway requires networking.service.app.ports.http to be defined" }}
+{{- end }}
+{{- if and .Values.ingress.traefik.enabled (not (index .Values.networking.service.app.ports "http")) }}
+{{- fail "ingress.traefik requires networking.service.app.ports.http to be defined" }}
 {{- end }}
 
 # persistence
@@ -39,7 +77,7 @@
 {{- end }}
 
 # configuration
-{{- if and .Values.homeAssistant.configuration.enabled (not .Values.homeAssistant.configuration.config) }}
+{{- if and .Values.homeAssistant.configuration.enabled (empty .Values.homeAssistant.configuration.config) }}
 {{- fail "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true" }}
 {{- end }}
 {{- if and .Values.homeAssistant.configuration.checkConfig.enabled (not .Values.homeAssistant.configuration.enabled) }}
@@ -78,8 +116,28 @@
 {{- end }}
 {{- end }}
 
+# monitor
+{{- if .Values.monitor.metric.enabled }}
+{{- $metricPort := .Values.monitor.metric.port }}
+{{- $allPorts := list }}
+{{- range $svcName := keys .Values.networking.service | sortAlpha }}
+{{- $svc := index $.Values.networking.service $svcName }}
+{{- if $svc.enabled }}
+{{- range $portName := keys $svc.ports | sortAlpha }}
+{{- $port := index $svc.ports $portName }}
+{{- if not (eq $port.enabled false) }}
+{{- $allPorts = append $allPorts $portName }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not (has $metricPort $allPorts) }}
+{{- fail (printf "monitor.metric.port %q is not defined in any enabled service in networking.service" $metricPort) }}
+{{- end }}
+{{- end }}
+
 # user initContainers reserved name check
-{{- $reservedInitNames := list "gitops-setup" "bootstrap" "install-hacs" "generate-secrets-yaml" "copy-configuration" "check-config" }}
+{{- $reservedInitNames := list "gitops-setup" "bootstrap" "check-config" }}
 {{- range .Values.initContainers }}
 {{- if has .name $reservedInitNames }}
 {{- fail (printf "initContainers: name %q is reserved by the chart; rename your init container" .name) }}

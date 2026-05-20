@@ -7,6 +7,30 @@ tests:
       - hasDocuments:
           count: 0
 
+  - it: fails when gateway ingress is enabled but networking.service.app is disabled
+    set:
+      ingress.gateway.enabled: true
+      networking.service.app.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway requires networking.service.app to be enabled"
+
+  - it: fails when traefik ingress is enabled but networking.service.app is disabled
+    set:
+      ingress.traefik.enabled: true
+      networking.service.app.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik requires networking.service.app to be enabled"
+
+  - it: fails when both gateway and traefik ingress are enabled simultaneously
+    set:
+      ingress.gateway.enabled: true
+      ingress.traefik.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)"
+
   - it: fails when traefik tls is enabled without secretName or certResolver
     set:
       ingress.traefik.tls.enabled: true
@@ -25,6 +49,14 @@ tests:
   - it: fails when configuration is enabled without config
     set:
       homeAssistant.configuration.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true"
+
+  - it: fails when configuration is enabled with an empty config map
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config: {}
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true"
@@ -155,12 +187,12 @@ tests:
   - it: fails when user initContainers uses a reserved name
     set:
       initContainers:
-        - name: install-hacs
+        - name: bootstrap
           image: busybox:latest
           command: ["sh", "-c", "echo hi"]
     asserts:
       - failedTemplate:
-          errorMessage: 'initContainers: name "install-hacs" is reserved by the chart; rename your init container'
+          errorMessage: 'initContainers: name "bootstrap" is reserved by the chart; rename your init container'
 
   - it: fails when gitops is enabled without knownHosts
     set:
@@ -204,3 +236,79 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.gitops.enabled requires persistence.enabled to be true"
+
+  - it: fails when traefik ingress is enabled with empty hostnames
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.hostnames: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik.hostnames must have at least one entry when traefik ingress is enabled"
+
+  - it: fails when gateway ingress is enabled with empty hostnames
+    set:
+      ingress.gateway.enabled: true
+      ingress.gateway.hostnames: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway.hostnames must have at least one entry when gateway ingress is enabled"
+
+  - it: fails when gateway ingress is enabled but http port is absent
+    set:
+      ingress.gateway.enabled: true
+      networking.service.app.ports.http: null
+      networking.service.app.ports.other.port: 9090
+      networking.service.app.ports.other.protocol: TCP
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined"
+
+  - it: fails when traefik ingress is enabled but http port is absent
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.hostnames[0]: ha.example.com
+      networking.service.app.ports.http: null
+      networking.service.app.ports.other.port: 9090
+      networking.service.app.ports.other.protocol: TCP
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik requires networking.service.app.ports.http to be defined"
+
+  - it: fails when monitor port does not exist in any service
+    set:
+      monitor.metric.enabled: true
+      monitor.metric.port: nonexistent
+    asserts:
+      - failedTemplate:
+          errorMessage: 'monitor.metric.port "nonexistent" is not defined in any enabled service in networking.service'
+
+  - it: does not fail when monitor port matches an existing service port
+    set:
+      monitor.metric.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when monitor port matches only a disabled service port
+    set:
+      monitor.metric.enabled: true
+      networking.service.app.ports.http.enabled: false
+      networking.service.app.ports.other.port: 9090
+      networking.service.app.ports.other.protocol: TCP
+    asserts:
+      - failedTemplate:
+          errorMessage: 'monitor.metric.port "http" is not defined in any enabled service in networking.service'
+
+  - it: fails when an enabled service has all ports explicitly disabled
+    set:
+      networking.service.app.ports.http.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "networking.service.app is enabled but has no enabled ports; enable at least one port or disable the service"
+
+  - it: does not fail when a service is disabled even if all its ports are disabled
+    set:
+      networking.service.app.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

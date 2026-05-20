@@ -23,13 +23,13 @@ tests:
           value: gitops-setup
       - equal:
           path: spec.template.spec.initContainers[1].name
-          value: wait-for-mqtt
-      - equal:
-          path: spec.template.spec.initContainers[2].name
           value: bootstrap
       - equal:
-          path: spec.template.spec.initContainers[2].image
+          path: spec.template.spec.initContainers[1].image
           value: docker.io/alpine:3.21
+      - equal:
+          path: spec.template.spec.initContainers[2].name
+          value: wait-for-mqtt
       - equal:
           path: spec.template.spec.initContainers[3].name
           value: check-config
@@ -51,9 +51,8 @@ tests:
       - equal:
           path: spec.template.spec.initContainers[0].securityContext.runAsUser
           value: 0
-      - equal:
+      - notExists:
           path: spec.template.spec.initContainers[0].securityContext.runAsNonRoot
-          value: false
       - equal:
           path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
           value: true
@@ -113,13 +112,34 @@ tests:
             name: CONFIG_ENABLED
             value: "true"
 
-  - it: check-config mounts only the config PVC even when gitops is enabled
+  - it: gitops-setup and bootstrap use homeAssistant.initContainer.resources when overridden
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+      homeAssistant.initContainer.resources:
+        requests:
+          memory: 128Mi
+          cpu: 100m
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].resources.requests.memory
+          value: 128Mi
+      - equal:
+          path: spec.template.spec.initContainers[1].resources.requests.memory
+          value: 128Mi
+
+  - it: check-config uses homeAssistant.configuration.checkConfig.resources when overridden
     set:
       homeAssistant.configuration.enabled: true
       homeAssistant.configuration.config:
         homeassistant:
           name: Home
       homeAssistant.configuration.checkConfig.enabled: true
+      homeAssistant.configuration.checkConfig.resources:
+        requests:
+          memory: 512Mi
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
@@ -128,7 +148,34 @@ tests:
           path: spec.template.spec.initContainers[1].name
           value: check-config
       - equal:
-          path: spec.template.spec.initContainers[1].volumeMounts
+          path: spec.template.spec.initContainers[1].resources.requests.memory
+          value: 512Mi
+
+  - it: check-config mounts only the config PVC even when gitops is enabled
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
+      homeAssistant.configuration.checkConfig.enabled: true
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: gitops-setup
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: bootstrap
+      - equal:
+          path: spec.template.spec.initContainers[2].name
+          value: check-config
+      - equal:
+          path: spec.template.spec.initContainers[2].volumeMounts
           value:
             - name: config
               mountPath: /config

@@ -5,8 +5,11 @@ metadata:
   labels:
     {{- include "home-assistant.labels" . | nindent 4 }}
 spec:
-  serviceName: {{ include "home-assistant.fullname" . }}
+  serviceName: {{ include "home-assistant.fullname" . }}-headless
   replicas: {{ .Values.replicaCount }}
+  podManagementPolicy: {{ .Values.podManagementPolicy }}
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
   selector:
     matchLabels:
       {{- include "home-assistant.selectorLabels" . | nindent 6 }}
@@ -30,11 +33,7 @@ spec:
         - name: {{ . }}
         {{- end }}
       {{- end }}
-      {{- with .Values.podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if or .Values.homeAssistant.gitops.enabled .Values.initContainers .Values.homeAssistant.initContainer.tasks.setupHACS.enabled .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled .Values.homeAssistant.configuration.enabled }}
+      {{- if or .Values.homeAssistant.gitops.enabled .Values.initContainers (include "home-assistant.bootstrapEnabled" .) }}
       initContainers:
         {{- if .Values.homeAssistant.gitops.enabled }}
         - name: gitops-setup
@@ -42,7 +41,6 @@ spec:
           imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
           securityContext:
             runAsUser: 0
-            runAsNonRoot: false
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
@@ -55,22 +53,23 @@ spec:
               mkdir -p /config/gitops/scripts
               {{- range .Values.homeAssistant.gitops.repos }}
               mkdir -p /config/gitops/{{ .name }}
-              printf '%s' '{{ .url }}' > /config/gitops/{{ .name }}/remote
+              printf '%s\n' {{ .url | quote }} > /config/gitops/{{ .name }}/remote
               {{- end }}
+          {{- with .Values.homeAssistant.initContainer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
+            {{- /* config volume always present: gitops.enabled → persistence.enabled (validated) */}}
             - name: config
               mountPath: /config
         {{- end }}
-        {{- with .Values.initContainers }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- if or .Values.homeAssistant.initContainer.tasks.setupHACS.enabled .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled .Values.homeAssistant.configuration.enabled }}
+        {{- if include "home-assistant.bootstrapEnabled" . }}
         - name: bootstrap
           image: {{ include "home-assistant.initContainer.image" . }}
           imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
           securityContext:
             runAsUser: 0
-            runAsNonRoot: false
             readOnlyRootFilesystem: false
             allowPrivilegeEscalation: false
             capabilities:
@@ -82,6 +81,10 @@ spec:
               value: "true"
             - name: HACS_VERSION
               value: {{ .Values.homeAssistant.initContainer.tasks.setupHACS.version | quote }}
+            {{- if .Values.homeAssistant.initContainer.tasks.setupHACS.sha256 }}
+            - name: HACS_SHA256
+              value: {{ .Values.homeAssistant.initContainer.tasks.setupHACS.sha256 | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
             - name: SECRETS_ENABLED
@@ -93,6 +96,10 @@ spec:
             - name: CONFIG_ENABLED
               value: "true"
             {{- end }}
+          {{- with .Values.homeAssistant.initContainer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /config
@@ -110,6 +117,9 @@ spec:
               readOnly: true
             {{- end }}
         {{- end }}
+        {{- with .Values.initContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- if and .Values.homeAssistant.configuration.enabled .Values.homeAssistant.configuration.checkConfig.enabled }}
         - name: check-config
           image: {{ include "home-assistant.image" . }}
@@ -126,6 +136,10 @@ spec:
             - check_config
             - --config
             - /config
+          {{- with .Values.homeAssistant.configuration.checkConfig.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /config
@@ -136,20 +150,10 @@ spec:
           image: {{ include "home-assistant.image" . }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           # Security context omitted — home-assistant uses s6-overlay which must start as root.
+          {{- with include "home-assistant.containerPorts" . | trim }}
           ports:
-            {{- range $svcName := keys .Values.networking.service | sortAlpha }}
-            {{- $svc := index $.Values.networking.service $svcName }}
-            {{- if $svc.enabled }}
-            {{- range $portName := keys $svc.ports | sortAlpha }}
-            {{- $port := index $svc.ports $portName }}
-            {{- if (default true $port.enabled) }}
-            - name: {{ $portName }}
-              containerPort: {{ $port.port }}
-              protocol: {{ $port.protocol }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
+            {{- . | nindent 12 }}
+          {{- end }}
           {{- with .Values.env }}
           env:
             {{- toYaml . | nindent 12 }}
@@ -181,8 +185,8 @@ spec:
               subPath: known_hosts
               readOnly: true
             - name: gitops-ssh-key
-              mountPath: /run/secrets/gitops/id_ed25519
-              subPath: id_ed25519
+              mountPath: /run/secrets/gitops/ssh_key
+              subPath: {{ .Values.homeAssistant.gitops.sshKeyName }}
               readOnly: true
             - name: gitops-ha-check
               mountPath: /run/ha-check
@@ -205,9 +209,8 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if or (and .Values.persistence.enabled .Values.persistence.existingClaim) .Values.homeAssistant.configuration.enabled .Values.homeAssistant.gitops.enabled .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled .Values.homeAssistant.initContainer.tasks.setupHACS.enabled .Values.secretVolumeMounts .Values.extraVolumes }}
       volumes:
-        {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
+        {{- if .Values.persistence.existingClaim }}
         - name: config
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim }}
@@ -217,7 +220,7 @@ spec:
           configMap:
             name: {{ include "home-assistant.fullname" . }}-configuration
         {{- end }}
-        {{- if or .Values.homeAssistant.initContainer.tasks.setupHACS.enabled .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled .Values.homeAssistant.configuration.enabled }}
+        {{- if include "home-assistant.bootstrapEnabled" . }}
         - name: init-scripts
           configMap:
             name: {{ include "home-assistant.fullname" . }}-init-scripts
@@ -258,7 +261,6 @@ spec:
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- end }}
       {{- with .Values.pod.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -280,12 +282,14 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         labels:
-          {{- merge (include "home-assistant.labels" . | fromYaml) .Values.persistence.labels | toYaml | nindent 10 }}
+          {{- merge (include "home-assistant.labels" . | fromYaml) (.Values.persistence.labels | default dict) | toYaml | nindent 10 }}
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}
         {{- if .Values.persistence.storageClass }}
         storageClassName: {{ .Values.persistence.storageClass }}
+        {{- else if .Values.persistence.existingVolume }}
+        storageClassName: ""
         {{- end }}
         {{- if .Values.persistence.existingVolume }}
         volumeName: {{ .Values.persistence.existingVolume }}

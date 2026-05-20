@@ -50,6 +50,8 @@ tests:
       - equal:
           path: spec.routes[0].match
           value: "Host(`ha.example.com`)"
+      - notExists:
+          path: spec.routes[0].kind
       - contains:
           path: spec.entryPoints
           content: websecure
@@ -58,3 +60,26 @@ tests:
           value: letsencrypt
       - notExists:
           path: spec.tls.secretName
+
+  - it: renders middleware entries in IngressRoute with and without namespace
+    template: templates/ingressroute.yaml
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.entryPoints[0]: websecure
+      ingress.traefik.hostnames[0]: ha.example.com
+      ingress.traefik.middlewares:
+        - name: my-auth
+        - name: my-ns-auth
+          namespace: traefik
+    asserts:
+      - equal:
+          path: spec.routes[0].middlewares[0].name
+          value: my-auth
+      - notExists:
+          path: spec.routes[0].middlewares[0].namespace
+      - equal:
+          path: spec.routes[0].middlewares[1].name
+          value: my-ns-auth
+      - equal:
+          path: spec.routes[0].middlewares[1].namespace
+          value: traefik

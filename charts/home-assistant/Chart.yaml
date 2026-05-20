@@ -3,6 +3,7 @@ name: home-assistant
 description: Home Assistant automation platform
 type: application
 version: 2.0.0
+appVersion: "2026.5"
 keywords:
   - home-assistant
   - home-automation

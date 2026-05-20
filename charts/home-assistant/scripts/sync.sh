@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# sync.sh — fetch a git ref, validate with check_config, copy on success
+# sync.sh — fetch a git tag, validate with check_config, copy on success
 #
 # Usage:
-#   sync.sh --repo <name> --ref <tag-or-hash> --copy <src>:<dst> [--copy ...]
+#   sync.sh --repo <name> --ref <tag> --copy <src>:<dst> [--copy ...]
 #
 # Arguments:
 #   --repo    name of the repo under /config/gitops/ (e.g. ha-config)
-#   --ref     tag name or commit hash to check out
+#   --ref     annotated or lightweight tag name to check out (e.g. v1.2.3)
 #   --copy    colon-separated source:destination pair; may be repeated
 #             src is relative to the checkout root
 #             dst is an absolute path
@@ -52,7 +52,7 @@ esac
 
 # Hardened SSH: use only the deploy key, require host verification, no interactive prompts.
 export GIT_SSH_COMMAND="ssh \
-  -i /run/secrets/gitops/id_ed25519 \
+  -i /run/secrets/gitops/ssh_key \
   -o UserKnownHostsFile=/run/secrets/gitops/known_hosts \
   -o StrictHostKeyChecking=yes \
   -o IdentitiesOnly=yes \
@@ -61,26 +61,29 @@ export GIT_SSH_COMMAND="ssh \
   -o ForwardX11=no \
   -o PermitLocalCommand=no"
 
-# --- 1. Clone or fetch ---
+# --- 1. Init or fetch ---
 if [ ! -d "$REPO_DIR" ]; then
-  git clone --bare --depth 1 "$REPO_URL" "$REPO_DIR"
+  git init --bare "$REPO_DIR"
+  git -C "$REPO_DIR" remote add origin "$REPO_URL"
   git -C "$REPO_DIR" config gc.reflogExpire 0
   git -C "$REPO_DIR" config gc.reflogExpireUnreachable 0
 fi
 
-git -C "$REPO_DIR" fetch --depth 1 origin "$REF"
+git -C "$REPO_DIR" fetch --depth 1 --force origin "refs/tags/$REF:refs/tags/$REF"
 
-# --- 2. Verify commit/tag signature if allowed_signers is provided ---
+# --- 2. Verify tag signature if allowed_signers is provided ---
 SIGNERS=/run/secrets/gitops/allowed_signers
 if [ -f "$SIGNERS" ]; then
   git -C "$REPO_DIR" config gpg.format ssh
   git -C "$REPO_DIR" config gpg.ssh.allowedSignersFile "$SIGNERS"
+  # Annotated tags carry an embedded signature object; verify-tag handles them.
+  # Lightweight tags point directly to a commit; fall back to verify-commit.
   if git -C "$REPO_DIR" cat-file -t "refs/tags/$REF" 2>/dev/null | grep -q "^tag$"; then
     git -C "$REPO_DIR" verify-tag "$REF" \
       || { echo "ERROR: tag signature verification failed for $REF" >&2; exit 1; }
   else
     git -C "$REPO_DIR" verify-commit FETCH_HEAD \
-      || { echo "ERROR: commit signature verification failed" >&2; exit 1; }
+      || { echo "ERROR: commit signature verification failed for tag $REF" >&2; exit 1; }
   fi
 fi
 
@@ -89,11 +92,12 @@ git -C "$REPO_DIR" reflog expire --expire=now --all
 git -C "$REPO_DIR" gc --prune=now --quiet
 
 # --- 4. Worktree checkout into tmpfs ---
-git -C "$REPO_DIR" worktree prune
-# $CHECK_DIR is a Kubernetes emptyDir mount point; rm -rf the path itself would hit EBUSY.
-# Clear contents only, then let git worktree add populate the empty directory.
+# Clear stale contents first: the .git link must be absent before worktree prune
+# marks an orphaned entry as stale. ($CHECK_DIR is an emptyDir mount — rm -rf
+# the path itself would hit EBUSY; clear contents only.)
 find "$CHECK_DIR" -mindepth 1 -delete 2>/dev/null || true
-git -C "$REPO_DIR" worktree add --detach "$CHECK_DIR" FETCH_HEAD
+git -C "$REPO_DIR" worktree prune
+git -C "$REPO_DIR" worktree add --detach "$CHECK_DIR" "refs/tags/$REF"
 chmod 700 "$CHECK_DIR"
 trap 'git -C "$REPO_DIR" worktree remove --force "$CHECK_DIR" 2>/dev/null' EXIT
 

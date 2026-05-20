@@ -42,11 +42,6 @@ tests:
           path: spec.template.spec.initContainers[0].name
           value: bootstrap
       - contains:
-          path: spec.template.spec.initContainers[0].env
-          content:
-            name: CONFIG_ENABLED
-            value: "true"
-      - contains:
           path: spec.template.spec.initContainers[0].volumeMounts
           content:
             name: ha-bootstrap-config

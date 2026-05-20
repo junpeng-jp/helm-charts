@@ -10,8 +10,6 @@ tests:
       - equal:
           path: spec.volumeClaimTemplates[0].spec.accessModes[0]
           value: ReadWriteOnce
-      - notExists:
-          path: spec.template.spec.volumes
 
   - it: mounts an existing PVC as a volume instead of creating a VolumeClaimTemplate
     set:
@@ -26,12 +24,34 @@ tests:
             persistentVolumeClaim:
               claimName: my-existing-pvc
 
-  - it: sets volumeName in VolumeClaimTemplate when existingVolume is specified
+  - it: sets volumeName and storageClassName empty string in VolumeClaimTemplate when existingVolume is specified
     set:
       persistence.existingVolume: my-existing-pv
     asserts:
       - equal:
           path: spec.volumeClaimTemplates[0].spec.volumeName
           value: my-existing-pv
-      - notExists:
-          path: spec.template.spec.volumes
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: ""
+
+  - it: sets storageClassName in VolumeClaimTemplate when storageClass is specified
+    set:
+      persistence.storageClass: local-path
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: local-path
+
+  - it: user-supplied persistence.labels are merged alongside chart labels; chart labels win on conflict
+    set:
+      persistence.labels:
+        environment: production
+        app.kubernetes.io/managed-by: my-tool
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.labels["environment"]
+          value: production
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.labels["app.kubernetes.io/managed-by"]
+          value: Helm
