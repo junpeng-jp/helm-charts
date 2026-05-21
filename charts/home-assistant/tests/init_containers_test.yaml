@@ -2,63 +2,180 @@ suite: Init Containers
 templates:
   - templates/statefulset.yaml
 tests:
-  - it: renders init containers in correct order with all tasks and user containers enabled
+  - it: renders init containers in correct order with gitops, all tasks, and user containers enabled
     set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
       homeAssistant.initContainer.tasks.setupHACS.enabled: true
       homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
       homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
       homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
-      homeAssistant.config.enabled: true
-      homeAssistant.config.existingConfigMap: my-ha-config
-      homeAssistant.config.checkConfig.enabled: true
-      homeAssistant.packages.enabled: true
-      homeAssistant.packages.existingConfigMap: my-ha-packages
-      homeAssistant.themes.enabled: true
-      homeAssistant.themes.existingConfigMap: my-ha-themes
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
+      homeAssistant.configuration.checkConfig.enabled: true
     values:
       - fixtures/init-containers.yaml
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: wait-for-mqtt
+          value: gitops-setup
       - equal:
           path: spec.template.spec.initContainers[1].name
-          value: install-hacs
+          value: bootstrap
       - equal:
           path: spec.template.spec.initContainers[1].image
           value: docker.io/alpine:3.21
       - equal:
           path: spec.template.spec.initContainers[2].name
-          value: generate-secrets-yaml
+          value: wait-for-mqtt
       - equal:
           path: spec.template.spec.initContainers[3].name
-          value: copy-config
-      - equal:
-          path: spec.template.spec.initContainers[4].name
           value: check-config
       - equal:
-          path: spec.template.spec.initContainers[4].image
+          path: spec.template.spec.initContainers[3].image
           value: ghcr.io/home-assistant/home-assistant:2026.5
       - equal:
-          path: spec.template.spec.initContainers[4].command[0]
+          path: spec.template.spec.initContainers[3].command[0]
           value: hass
 
-  # check-config must not pick up package/theme volumes — it only validates the config file.
-  - it: check-config mounts only the config PVC even when packages and themes are enabled
+  - it: gitops-setup runs as root with DROP ALL and no CHOWN capability
     set:
-      homeAssistant.config.enabled: true
-      homeAssistant.config.existingConfigMap: my-ha-config
-      homeAssistant.config.checkConfig.enabled: true
-      homeAssistant.packages.enabled: true
-      homeAssistant.packages.existingConfigMap: my-ha-packages
-      homeAssistant.themes.enabled: true
-      homeAssistant.themes.existingConfigMap: my-ha-themes
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
     asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: gitops-setup
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.runAsUser
+          value: 0
+      - notExists:
+          path: spec.template.spec.initContainers[0].securityContext.runAsNonRoot
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - contains:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.drop
+          content: ALL
+      - notExists:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.add
+      - equal:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+
+  - it: bootstrap has least-privilege security context with writable root for apk
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
+      homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: bootstrap
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.runAsUser
+          value: 0
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
+          value: false
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - contains:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.drop
+          content: ALL
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: HACS_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: SECRETS_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: CONFIG_ENABLED
+            value: "true"
+
+  - it: gitops-setup and bootstrap use homeAssistant.initContainer.resources when overridden
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+      homeAssistant.initContainer.resources:
+        requests:
+          memory: 128Mi
+          cpu: 100m
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].resources.requests.memory
+          value: 128Mi
+      - equal:
+          path: spec.template.spec.initContainers[1].resources.requests.memory
+          value: 128Mi
+
+  - it: check-config uses homeAssistant.configuration.checkConfig.resources when overridden
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
+      homeAssistant.configuration.checkConfig.enabled: true
+      homeAssistant.configuration.checkConfig.resources:
+        requests:
+          memory: 512Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: bootstrap
       - equal:
           path: spec.template.spec.initContainers[1].name
           value: check-config
       - equal:
-          path: spec.template.spec.initContainers[1].volumeMounts
+          path: spec.template.spec.initContainers[1].resources.requests.memory
+          value: 512Mi
+
+  - it: check-config mounts only the config PVC even when gitops is enabled
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.config:
+        homeassistant:
+          name: Home
+      homeAssistant.configuration.checkConfig.enabled: true
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:example/ha-config.git"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: gitops-setup
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: bootstrap
+      - equal:
+          path: spec.template.spec.initContainers[2].name
+          value: check-config
+      - equal:
+          path: spec.template.spec.initContainers[2].volumeMounts
           value:
             - name: config
               mountPath: /config

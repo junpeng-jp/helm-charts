@@ -1,0 +1,11 @@
+{{- if include "home-assistant.bootstrapEnabled" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-init-scripts
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  bootstrap.sh: |-
+    {{- .Files.Get "scripts/bootstrap.sh" | nindent 4 }}
+{{- end }}

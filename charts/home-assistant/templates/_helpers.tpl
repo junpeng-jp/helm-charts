@@ -56,3 +56,40 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s/%s:%s" $image.registry $image.repository $image.tag }}
 {{- end }}
 {{- end }}
+
+{{- /* Returns "true" or "" (empty string). Use with include in if-predicates: {{- if include "home-assistant.bootstrapEnabled" . }} */ -}}
+{{- define "home-assistant.bootstrapEnabled" -}}
+{{- if or .Values.homeAssistant.initContainer.tasks.setupHACS.enabled
+         .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled
+         .Values.homeAssistant.configuration.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.testImage" -}}
+{{- $registry := .Values.global.testImage.registry -}}
+{{- $repository := .Values.global.testImage.repository -}}
+{{- $tag := .Values.global.testImage.tag -}}
+{{- if .Values.global.testImage.digest }}
+{{- printf "%s/%s@%s" $registry $repository .Values.global.testImage.digest }}
+{{- else }}
+{{- printf "%s/%s:%s" $registry $repository $tag }}
+{{- end }}
+{{- end }}
+
+{{- /* Emits a YAML list of containerPort entries for all enabled services and ports. */ -}}
+{{- define "home-assistant.containerPorts" -}}
+{{- range $svcName := keys .Values.networking.service | sortAlpha -}}
+{{- $svc := index $.Values.networking.service $svcName -}}
+{{- if $svc.enabled -}}
+{{- range $portName := keys $svc.ports | sortAlpha -}}
+{{- $port := index $svc.ports $portName -}}
+{{- if ne $port.enabled false }}
+- name: {{ $portName }}
+  containerPort: {{ $port.port }}
+  protocol: {{ $port.protocol }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -1,3 +1,4 @@
+{{- /* Primary service name for this chart: "app" (rendered without suffix) */ -}}
 {{- range $svcName := keys .Values.networking.service | sortAlpha }}
 {{- $svc := index $.Values.networking.service $svcName }}
 {{- if $svc.enabled }}
@@ -15,7 +16,7 @@ spec:
   ports:
     {{- range $portName := keys $svc.ports | sortAlpha }}
     {{- $port := index $svc.ports $portName }}
-    {{- if (default true $port.enabled) }}
+    {{- if ne $port.enabled false }}
     - name: {{ $portName }}
       port: {{ $port.port }}
       targetPort: {{ $portName }}

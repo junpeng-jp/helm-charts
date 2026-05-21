@@ -2,11 +2,11 @@ suite: Standard
 templates:
   - templates/statefulset.yaml
   - templates/service.yaml
+  - templates/service-headless.yaml
+  - templates/tests/test-connection.yaml
 tests:
   - it: renders a StatefulSet with minimal config
     template: templates/statefulset.yaml
-    values:
-      - fixtures/minimal-values.yaml
     asserts:
       - isKind:
           of: StatefulSet
@@ -23,6 +23,10 @@ tests:
           value: false
       - notExists:
           path: spec.template.spec.dnsPolicy
+      - notExists:
+          path: spec.template.spec.securityContext
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext
 
   - it: renders a fully-configured StatefulSet with all features enabled
     template: templates/statefulset.yaml
@@ -37,6 +41,11 @@ tests:
           content:
             name: config
             mountPath: /config
+      - notExists:
+          path: spec.template.spec.containers[1]
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: RELEASE-NAME-home-assistant
 
   - it: uses digest over tag for the main image when both are set
     template: templates/statefulset.yaml
@@ -47,6 +56,28 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/home-assistant/home-assistant@sha256:abc123
+
+  - it: always renders a headless Service and StatefulSet references it as serviceName
+    asserts:
+      - template: templates/service-headless.yaml
+        isKind:
+          of: Service
+      - template: templates/service-headless.yaml
+        matchRegex:
+          path: metadata.name
+          pattern: -headless$
+      - template: templates/service-headless.yaml
+        equal:
+          path: spec.clusterIP
+          value: None
+      - template: templates/service-headless.yaml
+        equal:
+          path: spec.ports[0].targetPort
+          value: http
+      - template: templates/statefulset.yaml
+        matchRegex:
+          path: spec.serviceName
+          pattern: -headless$
 
   - it: sets dnsPolicy to ClusterFirstWithHostNet when hostNetwork is enabled
     template: templates/statefulset.yaml
@@ -59,3 +90,76 @@ tests:
       - equal:
           path: spec.template.spec.dnsPolicy
           value: ClusterFirstWithHostNet
+
+  - it: test-connection pod uses global.testImage tag by default
+    template: templates/tests/test-connection.yaml
+    asserts:
+      - equal:
+          path: spec.containers[0].image
+          value: docker.io/busybox:1.37
+
+  - it: test-connection pod uses digest when global.testImage.digest is set
+    template: templates/tests/test-connection.yaml
+    set:
+      global.testImage.digest: "sha256:abc123"
+    asserts:
+      - equal:
+          path: spec.containers[0].image
+          value: docker.io/busybox@sha256:abc123
+
+  - it: headless service omits ports when networking.service.app is disabled
+    template: templates/service-headless.yaml
+    set:
+      networking.service.app.enabled: false
+    asserts:
+      - isKind:
+          of: Service
+      - notExists:
+          path: spec.ports
+
+  - it: headless service uses publishNotReadyAddresses true by default
+    template: templates/service-headless.yaml
+    asserts:
+      - equal:
+          path: spec.publishNotReadyAddresses
+          value: true
+
+  - it: headless service publishNotReadyAddresses can be set to false
+    template: templates/service-headless.yaml
+    set:
+      networking.headlessService.publishNotReadyAddresses: false
+    asserts:
+      - equal:
+          path: spec.publishNotReadyAddresses
+          value: false
+
+  - it: StatefulSet defaults to OrderedReady podManagementPolicy and RollingUpdate strategy
+    template: templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.podManagementPolicy
+          value: OrderedReady
+      - equal:
+          path: spec.updateStrategy.type
+          value: RollingUpdate
+      - equal:
+          path: spec.updateStrategy.rollingUpdate.partition
+          value: 0
+
+  - it: StatefulSet uses OnDelete strategy when configured
+    template: templates/statefulset.yaml
+    set:
+      updateStrategy.type: OnDelete
+    asserts:
+      - equal:
+          path: spec.updateStrategy.type
+          value: OnDelete
+
+  - it: StatefulSet uses Parallel podManagementPolicy when configured
+    template: templates/statefulset.yaml
+    set:
+      podManagementPolicy: Parallel
+    asserts:
+      - equal:
+          path: spec.podManagementPolicy
+          value: Parallel

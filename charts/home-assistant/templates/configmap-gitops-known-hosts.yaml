@@ -1,0 +1,11 @@
+{{- if .Values.homeAssistant.gitops.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-gitops-known-hosts
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  known_hosts: |
+    {{- .Values.homeAssistant.gitops.knownHosts | nindent 4 }}
+{{- end }}

@@ -1,0 +1,11 @@
+{{- if .Values.homeAssistant.configuration.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-configuration
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  configuration.yaml: |
+    {{- .Values.homeAssistant.configuration.config | toYaml | nindent 4 }}
+{{- end }}

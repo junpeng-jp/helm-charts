@@ -1,5 +1,6 @@
-{{- if .Values.networking.service.app.enabled }}
-{{- $port := (index .Values.networking.service.app.ports "http").port -}}
+{{- $httpPort := index .Values.networking.service.app.ports "http" }}
+{{- if and .Values.networking.service.app.enabled $httpPort }}
+{{- $port := $httpPort.port -}}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -8,11 +9,13 @@ metadata:
     {{- include "home-assistant.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
   containers:
     - name: wget
-      image: busybox
+      image: {{ include "home-assistant.testImage" . }}
+      imagePullPolicy: {{ .Values.global.testImage.pullPolicy }}
       command:
         - wget
         - --spider

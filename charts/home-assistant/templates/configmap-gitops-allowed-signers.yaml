@@ -1,0 +1,11 @@
+{{- if and .Values.homeAssistant.gitops.enabled .Values.homeAssistant.gitops.allowedSigners }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-gitops-allowed-signers
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  allowed_signers: |
+    {{- .Values.homeAssistant.gitops.allowedSigners | nindent 4 }}
+{{- end }}
