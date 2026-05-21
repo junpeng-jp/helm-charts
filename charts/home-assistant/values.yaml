@@ -88,7 +88,7 @@ readinessProbe:
     port: http
   initialDelaySeconds: 30
   periodSeconds: 10
-  failureThreshold: 10  # HA is slow to report ready; 10 × 10s = 100s total grace period
+  failureThreshold: 10  # HA is slow to report ready. 10 × 10s = 100s total grace period
 
 resources:
   requests:
@@ -111,7 +111,7 @@ pod:
 
 networking:
   headlessService:
-    publishNotReadyAddresses: true
+    publishNotReadyAddresses: true  # include not-yet-ready pods in headless DNS, required for StatefulSet rolling restarts
   service:
     app:
       enabled: true
@@ -142,9 +142,6 @@ ingress:
       secretName: ""
       certResolver: ""
 
-  # future: support for additionalIngresses (e.g. plain HTTP ingress on a
-  # local IoT VLAN alongside the primary HTTPS ingress)
-
 persistence:
   enabled: true
   storageClass: ""  # uses the cluster default
@@ -154,7 +151,7 @@ persistence:
   annotations: {}
   labels: {}
   existingClaim: ""   # use an existing PVC directly (skips volumeClaimTemplate)
-  existingVolume: ""  # bind the volumeClaimTemplate to a specific PV by name; mutually exclusive with existingClaim
+  existingVolume: ""  # bind the volumeClaimTemplate to a specific PV by name, mutually exclusive with existingClaim
 
 monitor:
   metric:
@@ -164,13 +161,9 @@ monitor:
     interval: 30s
     scrapeTimeout: 10s
     labels: {}
-    # future: bearerTokenSecret
-    # Reference a Kubernetes Secret containing a long-lived HA token
 
-# Home Assistant application configuration.
 homeAssistant:
-  # initContainer - configuration for the utility init containers that run before Home Assistant.
-  # Override here to change the image for all of them at once.
+  # Override image to change it for all utility init containers at once.
   initContainer:
     image:
       registry: docker.io
@@ -185,33 +178,25 @@ homeAssistant:
         cpu: 50m
 
     tasks:
-      # setupHACS - installs HACS (Home Assistant Community Store) via an init container
-      # before Home Assistant starts. The init container writes into /config/custom_components/hacs.
-      # Requires persistence.enabled (or existingClaim set) for the config volume to exist.
+      # Installs HACS (Home Assistant Community Store) into /config/custom_components/hacs.
+      # Requires persistence.enabled.
       setupHACS:
         enabled: false
         version: "2.0.5"   # required when enabled
-        sha256: ""          # optional; if set, verifies the downloaded zip before installing
+        sha256: ""          # optional. if set, verifies the downloaded zip before installing
 
-      # setupSecretsYaml - mounts a Kubernetes Secret as a volume and writes its
-      # key-value pairs to /config/secrets.yaml before Home Assistant starts.
-      #
-      # This task fully manages /config/secrets.yaml and overwrites it on every pod restart. Don't
-      # use the Studio Code Server, SSH, or Samba add-ons to modify secrets.yaml when this task is
-      # enabled. Those changes are lost on the next restart.
+      # Generates /config/secrets.yaml from a Kubernetes Secret before Home Assistant starts.
+      # Overwrites /config/secrets.yaml on every pod restart — don't edit it via Studio Code
+      # Server, SSH, or Samba. Those changes are lost on restart.
       setupSecretsYaml:
         enabled: false
         secretName: ""  # required when enabled is true
 
-  # configuration - declares /config/configuration.yaml as a ConfigMap-managed file.
+  # Manages /config/configuration.yaml as a read-only ConfigMap mount. Requires persistence.enabled.
   # See: https://www.home-assistant.io/docs/configuration/
   #
-  # Requires persistence.enabled. When enabled, the chart renders a ConfigMap from config below
-  # and mounts it read-only at /config/configuration.yaml in both the main container and the
-  # optional check-config init container. The declared values are authoritative on every restart.
-  #
-  # Because the mount is read-only, Home Assistant cannot write back to configuration.yaml directly.
-  # Use HA's !include directive to route sections to PVC-managed files that HA can write freely:
+  # Because the mount is read-only, Home Assistant cannot write back to configuration.yaml.
+  # Use HA's !include directive to route mutable sections to PVC-managed files:
   #
   #   homeAssistant:
   #     configuration:
@@ -224,21 +209,18 @@ homeAssistant:
   #             - 10.0.0.0/8
   configuration:
     enabled: false
-    config: {}  # freeform YAML; serialised as /config/configuration.yaml content
+    config: {}  # freeform YAML, serialised as /config/configuration.yaml content
     checkConfig:
-      enabled: false  # runs 'hass --script check_config' in an init container before startup; requires configuration.enabled and persistence.enabled
+      enabled: false  # runs 'hass --script check_config' in an init container before startup. requires configuration.enabled and persistence.enabled
       resources:
         requests:
           memory: 256Mi
           cpu: 100m
 
-  # gitops - mounts a sync script into the Home Assistant container for git-managed configuration.
-  #
-  # The bundled sync.sh fetches a git ref, validates it with 'hass --script check_config',
-  # and copies specified paths to their destinations. Trigger it from a Home Assistant
-  # shell_command automation, passing --repo, --ref, and --copy arguments.
-  #
-  # Requires persistence.enabled.
+  # Mounts sync.sh for git-managed configuration. Requires persistence.enabled.
+  # sync.sh fetches a git ref, validates with 'hass --script check_config', and copies
+  # specified paths to their destinations. Trigger it from a shell_command automation,
+  # passing --repo, --ref, and --copy arguments.
   gitops:
     enabled: false
 
