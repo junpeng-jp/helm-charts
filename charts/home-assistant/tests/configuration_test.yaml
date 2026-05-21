@@ -30,29 +30,30 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: bootstrap init container mounts bootstrap config read-only and sets CONFIG_ENABLED; ConfigMap volume not in main container
+  - it: configuration ConfigMap is mounted at /config/configuration.yaml in main container and check-config via subPath
     template: templates/statefulset.yaml
     set:
       homeAssistant.configuration.enabled: true
       homeAssistant.configuration.config:
         homeassistant:
           name: Home
+      homeAssistant.configuration.checkConfig.enabled: true
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: bootstrap
+          value: check-config
       - contains:
           path: spec.template.spec.initContainers[0].volumeMounts
           content:
-            name: ha-bootstrap-config
-            mountPath: /run/ha-bootstrap-config
+            name: ha-configuration
+            mountPath: /config/configuration.yaml
+            subPath: configuration.yaml
             readOnly: true
       - contains:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          content:
-            name: config
-            mountPath: /config
-      - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
-            name: ha-bootstrap-config
+            name: ha-configuration
+            mountPath: /config/configuration.yaml
+            subPath: configuration.yaml
+            readOnly: true
+

@@ -3,9 +3,10 @@ templates:
   - templates/statefulset.yaml
 tests:
   - it: renders init containers in correct order with gitops, all tasks, and user containers enabled
+    values:
+      - fixtures/gitops-minimal.yaml
+      - fixtures/init-containers.yaml
     set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
       homeAssistant.initContainer.tasks.setupHACS.enabled: true
       homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
       homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
@@ -15,8 +16,6 @@ tests:
         homeassistant:
           name: Home
       homeAssistant.configuration.checkConfig.enabled: true
-    values:
-      - fixtures/init-containers.yaml
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
@@ -41,9 +40,8 @@ tests:
           value: hass
 
   - it: gitops-setup runs as root with DROP ALL and no CHOWN capability
-    set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
+    values:
+      - fixtures/gitops-minimal.yaml
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
@@ -76,10 +74,6 @@ tests:
       homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
       homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
       homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
-      homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
@@ -109,13 +103,13 @@ tests:
       - contains:
           path: spec.template.spec.initContainers[0].env
           content:
-            name: CONFIG_ENABLED
-            value: "true"
+            name: SECRETS_DIR
+            value: "/run/secrets/ha-secrets"
 
   - it: gitops-setup and bootstrap use homeAssistant.initContainer.resources when overridden
+    values:
+      - fixtures/gitops-minimal.yaml
     set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
       homeAssistant.initContainer.tasks.setupHACS.enabled: true
       homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
       homeAssistant.initContainer.resources:
@@ -143,39 +137,33 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: bootstrap
-      - equal:
-          path: spec.template.spec.initContainers[1].name
           value: check-config
       - equal:
-          path: spec.template.spec.initContainers[1].resources.requests.memory
+          path: spec.template.spec.initContainers[0].resources.requests.memory
           value: 512Mi
 
-  - it: check-config mounts only the config PVC even when gitops is enabled
+  - it: check-config mounts config PVC and configuration ConfigMap; gitops volumes are excluded
+    values:
+      - fixtures/gitops-minimal.yaml
     set:
       homeAssistant.configuration.enabled: true
       homeAssistant.configuration.config:
         homeassistant:
           name: Home
       homeAssistant.configuration.checkConfig.enabled: true
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
-      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
-      homeAssistant.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
           value: gitops-setup
       - equal:
           path: spec.template.spec.initContainers[1].name
-          value: bootstrap
-      - equal:
-          path: spec.template.spec.initContainers[2].name
           value: check-config
       - equal:
-          path: spec.template.spec.initContainers[2].volumeMounts
+          path: spec.template.spec.initContainers[1].volumeMounts
           value:
             - name: config
               mountPath: /config
+            - name: ha-configuration
+              mountPath: /config/configuration.yaml
+              subPath: configuration.yaml
+              readOnly: true

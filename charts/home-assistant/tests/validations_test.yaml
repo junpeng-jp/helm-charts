@@ -70,7 +70,7 @@ tests:
       persistence.enabled: false
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.configuration.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml"
+          errorMessage: "homeAssistant.configuration.enabled requires persistence.enabled to be true"
 
   - it: fails when checkConfig is enabled without configuration enabled
     set:
@@ -194,31 +194,31 @@ tests:
       - failedTemplate:
           errorMessage: 'initContainers: name "bootstrap" is reserved by the chart; rename your init container'
 
-  - it: fails when gitops is enabled without knownHosts
+  - it: fails when gitops is enabled without knownHostsConfigMap
     set:
       homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: ""
+      homeAssistant.gitops.ssh.knownHostsConfigMap: ""
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.gitops.knownHosts must be set when gitops is enabled"
+          errorMessage: "homeAssistant.gitops.ssh.knownHostsConfigMap must be set when gitops is enabled"
 
-  - it: fails when gitops is enabled without sshKeySecret
+  - it: fails when gitops is enabled without ssh.keySecret
     set:
       homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
-      homeAssistant.gitops.sshKeySecret: ""
+      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
+      homeAssistant.gitops.ssh.keySecret: ""
       homeAssistant.gitops.repos:
         - name: ha-config
           url: "git@github.com:example/ha-config.git"
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.gitops.sshKeySecret must be set when gitops is enabled"
+          errorMessage: "homeAssistant.gitops.ssh.keySecret must be set when gitops is enabled"
 
   - it: fails when gitops is enabled without repos
     set:
       homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
-      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
+      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
       homeAssistant.gitops.repos: []
     asserts:
       - failedTemplate:
@@ -227,8 +227,8 @@ tests:
   - it: fails when gitops is enabled without persistence
     set:
       homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.knownHosts: "github.com ssh-ed25519 AAAA..."
-      homeAssistant.gitops.sshKeySecret: ha-gitops-ssh
+      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
+      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
       homeAssistant.gitops.repos:
         - name: ha-config
           url: "git@github.com:example/ha-config.git"
@@ -243,7 +243,7 @@ tests:
       ingress.traefik.hostnames: []
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.traefik.hostnames must have at least one entry when traefik ingress is enabled"
+          errorMessage: "ingress.traefik.hostnames must have at least one entry when ingress.traefik is enabled"
 
   - it: fails when gateway ingress is enabled with empty hostnames
     set:
@@ -251,7 +251,7 @@ tests:
       ingress.gateway.hostnames: []
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.gateway.hostnames must have at least one entry when gateway ingress is enabled"
+          errorMessage: "ingress.gateway.hostnames must have at least one entry when ingress.gateway is enabled"
 
   - it: fails when gateway ingress is enabled but http port is absent
     set:
@@ -261,7 +261,7 @@ tests:
       networking.service.app.ports.other.protocol: TCP
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined"
+          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined and enabled"
 
   - it: fails when traefik ingress is enabled but http port is absent
     set:
@@ -272,7 +272,7 @@ tests:
       networking.service.app.ports.other.protocol: TCP
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.traefik requires networking.service.app.ports.http to be defined"
+          errorMessage: "ingress.traefik requires networking.service.app.ports.http to be defined and enabled"
 
   - it: fails when monitor port does not exist in any service
     set:
