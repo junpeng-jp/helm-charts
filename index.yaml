@@ -15,6 +15,22 @@ entries:
     version: 0.1.0
   home-assistant:
   - apiVersion: v2
+    appVersion: "2026.5"
+    created: "2026-05-21T11:11:51.62810018Z"
+    description: Home Assistant automation platform
+    digest: 9f2ff4eb51bf95802cfa2c7167d094084b2b2af28726edfdf0d03803dc61f633
+    keywords:
+    - home-assistant
+    - home-automation
+    maintainers:
+    - name: junpeng-jp
+      url: https://github.com/junpeng-jp
+    name: home-assistant
+    type: application
+    urls:
+    - https://github.com/junpeng-jp/helm-charts/releases/download/home-assistant-2.0.0/home-assistant-2.0.0.tgz
+    version: 2.0.0
+  - apiVersion: v2
     created: "2026-05-11T16:45:42.214483211Z"
     description: Home Assistant automation platform
     digest: e802cd31212d0e81b3f52b8f51a1f291d697b081997ea2559546117b99a4205b
@@ -201,4 +217,4 @@ entries:
     urls:
     - https://github.com/junpeng-jp/helm-charts/releases/download/technitium-0.1.1/technitium-0.1.1.tgz
     version: 0.1.1
-generated: "2026-05-11T16:45:42.214508319Z"
+generated: "2026-05-21T11:11:51.628138993Z"
