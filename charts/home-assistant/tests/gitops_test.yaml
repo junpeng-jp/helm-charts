@@ -46,13 +46,8 @@ tests:
 
   - it: gitops volumes, mounts, and ssh key are configured correctly when gitops is enabled
     template: templates/statefulset.yaml
-    set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
-      homeAssistant.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
+    values:
+      - fixtures/gitops-minimal.yaml
     asserts:
       - contains:
           path: spec.template.spec.volumes
@@ -104,13 +99,10 @@ tests:
 
   - it: gitops-known-hosts volume references the user-supplied ConfigMap name
     template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
     set:
-      homeAssistant.gitops.enabled: true
       homeAssistant.gitops.ssh.knownHostsConfigMap: my-custom-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
-      homeAssistant.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
     asserts:
       - contains:
           path: spec.template.spec.volumes
@@ -121,14 +113,10 @@ tests:
 
   - it: renders allowed-signers volume referencing user-supplied ConfigMap name and mounts it when allowedSignersConfigMap is set
     template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
     set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
       homeAssistant.gitops.ssh.allowedSignersConfigMap: gitops-allowed-signers
-      homeAssistant.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
     asserts:
       - contains:
           path: spec.template.spec.volumes
@@ -160,14 +148,10 @@ tests:
 
   - it: does not render allowed-signers volume when allowedSignersConfigMap is empty
     template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
     set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
       homeAssistant.gitops.ssh.allowedSignersConfigMap: ""
-      homeAssistant.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
     asserts:
       - notContains:
           path: spec.template.spec.volumes

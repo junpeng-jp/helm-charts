@@ -243,7 +243,7 @@ tests:
       ingress.traefik.hostnames: []
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.traefik.hostnames must have at least one entry when traefik ingress is enabled"
+          errorMessage: "ingress.traefik.hostnames must have at least one entry when ingress.traefik is enabled"
 
   - it: fails when gateway ingress is enabled with empty hostnames
     set:
@@ -251,7 +251,7 @@ tests:
       ingress.gateway.hostnames: []
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.gateway.hostnames must have at least one entry when gateway ingress is enabled"
+          errorMessage: "ingress.gateway.hostnames must have at least one entry when ingress.gateway is enabled"
 
   - it: fails when gateway ingress is enabled but http port is absent
     set:

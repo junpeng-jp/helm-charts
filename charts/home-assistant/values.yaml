@@ -10,6 +10,7 @@ global:
     digest: ""
     pullPolicy: IfNotPresent
     pullSecrets: []
+
   testImage:
     registry: docker.io
     repository: busybox
@@ -269,4 +270,4 @@ homeAssistant:
 
     # Maximum size of the in-memory tmpfs used as the git worktree checkout directory.
     # Increase if your config repo is large.
-    checkDirSizeLimit: 256Mi
+    gitWorkspaceSizeLimit: 256Mi

@@ -61,6 +61,23 @@ tests:
       - notExists:
           path: spec.tls.secretName
 
+  - it: renders IngressRoute with secretName TLS when tls.secretName is set
+    template: templates/ingressroute.yaml
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.entryPoints[0]: websecure
+      ingress.traefik.hostnames[0]: ha.example.com
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.secretName: my-tls-secret
+    asserts:
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: spec.tls.secretName
+          value: my-tls-secret
+      - notExists:
+          path: spec.tls.certResolver
+
   - it: renders middleware entries in IngressRoute with and without namespace
     template: templates/ingressroute.yaml
     set:

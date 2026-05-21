@@ -91,14 +91,14 @@ tests:
           path: spec.template.spec.dnsPolicy
           value: ClusterFirstWithHostNet
 
-  - it: test-connection pod uses global.testImage tag by default
+  - it: test-connection pod uses testImage tag by default
     template: templates/tests/test-connection.yaml
     asserts:
       - equal:
           path: spec.containers[0].image
           value: docker.io/busybox:1.37
 
-  - it: test-connection pod uses digest when global.testImage.digest is set
+  - it: test-connection pod uses digest when testImage.digest is set
     template: templates/tests/test-connection.yaml
     set:
       global.testImage.digest: "sha256:abc123"

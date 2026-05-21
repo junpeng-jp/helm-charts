@@ -386,7 +386,7 @@
                 "allowedSignersConfigMap": { "type": "string" }
               }
             },
-            "checkDirSizeLimit": { "type": "string" }
+            "gitWorkspaceSizeLimit": { "type": "string" }
           }
         }
       }

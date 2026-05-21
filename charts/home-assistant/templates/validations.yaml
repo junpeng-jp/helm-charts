@@ -19,26 +19,22 @@
 {{- if and .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled }}
 {{- fail "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)" }}
 {{- end }}
-{{- if and .Values.ingress.gateway.enabled (not .Values.networking.service.app.enabled) }}
-{{- fail "ingress.gateway requires networking.service.app to be enabled" }}
-{{- end }}
-{{- if and .Values.ingress.traefik.enabled (not .Values.networking.service.app.enabled) }}
-{{- fail "ingress.traefik requires networking.service.app to be enabled" }}
+{{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (not .Values.networking.service.app.enabled) }}
+{{- fail (printf "%s requires networking.service.app to be enabled" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
 {{- end }}
 {{- if and .Values.ingress.traefik.tls.enabled (not .Values.ingress.traefik.tls.secretName) (not .Values.ingress.traefik.tls.certResolver) }}
 {{- fail "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set" }}
 {{- end }}
-{{- if and .Values.ingress.traefik.enabled (empty .Values.ingress.traefik.hostnames) }}
-{{- fail "ingress.traefik.hostnames must have at least one entry when traefik ingress is enabled" }}
+{{- range list
+    (dict "enabled" .Values.ingress.gateway.enabled "hostnames" .Values.ingress.gateway.hostnames "name" "ingress.gateway")
+    (dict "enabled" .Values.ingress.traefik.enabled "hostnames" .Values.ingress.traefik.hostnames "name" "ingress.traefik")
+}}
+{{- if and .enabled (empty .hostnames) }}
+{{- fail (printf "%s.hostnames must have at least one entry when %s is enabled" .name .name) }}
 {{- end }}
-{{- if and .Values.ingress.gateway.enabled (empty .Values.ingress.gateway.hostnames) }}
-{{- fail "ingress.gateway.hostnames must have at least one entry when gateway ingress is enabled" }}
 {{- end }}
-{{- if and .Values.ingress.gateway.enabled (not (index .Values.networking.service.app.ports "http")) }}
-{{- fail "ingress.gateway requires networking.service.app.ports.http to be defined" }}
-{{- end }}
-{{- if and .Values.ingress.traefik.enabled (not (index .Values.networking.service.app.ports "http")) }}
-{{- fail "ingress.traefik requires networking.service.app.ports.http to be defined" }}
+{{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (not (index .Values.networking.service.app.ports "http")) }}
+{{- fail (printf "%s requires networking.service.app.ports.http to be defined" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
 {{- end }}
 
 # persistence
