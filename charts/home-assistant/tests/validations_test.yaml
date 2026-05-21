@@ -261,7 +261,7 @@ tests:
       networking.service.app.ports.other.protocol: TCP
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined"
+          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined and enabled"
 
   - it: fails when traefik ingress is enabled but http port is absent
     set:
@@ -272,7 +272,7 @@ tests:
       networking.service.app.ports.other.protocol: TCP
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.traefik requires networking.service.app.ports.http to be defined"
+          errorMessage: "ingress.traefik requires networking.service.app.ports.http to be defined and enabled"
 
   - it: fails when monitor port does not exist in any service
     set:
