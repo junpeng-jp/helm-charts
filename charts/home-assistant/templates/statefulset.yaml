@@ -64,7 +64,7 @@ spec:
             {{- omit .Values.readinessProbe "enabled" | toYaml | nindent 12 }}
           {{- end }}
           volumeMounts:
-            {{- if or .Values.persistence.enabled .Values.persistence.existingClaim }}
+            {{- if .Values.persistence.enabled }}
             - name: config
               mountPath: /config
             {{- end }}

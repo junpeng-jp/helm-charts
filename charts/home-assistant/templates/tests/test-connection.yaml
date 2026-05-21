@@ -12,6 +12,12 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  {{- with .Values.global.image.pullSecrets }}
+  imagePullSecrets:
+    {{- range . }}
+    - name: {{ . }}
+    {{- end }}
+  {{- end }}
   containers:
     - name: wget
       image: {{ include "home-assistant.testImage" . }}

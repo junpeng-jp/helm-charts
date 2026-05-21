@@ -33,8 +33,12 @@
 {{- fail (printf "%s.hostnames must have at least one entry when %s is enabled" .name .name) }}
 {{- end }}
 {{- end }}
-{{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (not (index .Values.networking.service.app.ports "http")) }}
-{{- fail (printf "%s requires networking.service.app.ports.http to be defined" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
+{{- if and .Values.ingress.gateway.enabled (empty .Values.ingress.gateway.parentRefs) }}
+{{- fail "ingress.gateway.parentRefs must have at least one entry when ingress.gateway is enabled" }}
+{{- end }}
+{{- $httpPort := index .Values.networking.service.app.ports "http" }}
+{{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (or (not $httpPort) (eq (get $httpPort "enabled") false)) }}
+{{- fail (printf "%s requires networking.service.app.ports.http to be defined and enabled" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
 {{- end }}
 
 # persistence
