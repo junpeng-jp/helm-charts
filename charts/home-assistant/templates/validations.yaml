@@ -59,7 +59,7 @@
 {{- $needsPersistence := list
     (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupHACS.enabled        "msg" "homeAssistant.initContainer.tasks.setupHACS requires persistence.enabled to be true")
     (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled "msg" "homeAssistant.initContainer.tasks.setupSecretsYaml requires persistence.enabled to be true")
-    (dict "enabled" .Values.homeAssistant.configuration.enabled "msg" "homeAssistant.configuration.enabled requires persistence.enabled; the init container copies configuration.yaml into the PVC at /config/configuration.yaml")
+    (dict "enabled" .Values.homeAssistant.configuration.enabled "msg" "homeAssistant.configuration.enabled requires persistence.enabled to be true")
     (dict "enabled" .Values.homeAssistant.gitops.enabled "msg" "homeAssistant.gitops.enabled requires persistence.enabled to be true")
 }}
 {{- range $needsPersistence }}
@@ -86,11 +86,11 @@
 
 # gitops
 {{- if .Values.homeAssistant.gitops.enabled }}
-{{- if not .Values.homeAssistant.gitops.knownHosts }}
-{{- fail "homeAssistant.gitops.knownHosts must be set when gitops is enabled" }}
+{{- if not .Values.homeAssistant.gitops.ssh.knownHostsConfigMap }}
+{{- fail "homeAssistant.gitops.ssh.knownHostsConfigMap must be set when gitops is enabled" }}
 {{- end }}
-{{- if not .Values.homeAssistant.gitops.sshKeySecret }}
-{{- fail "homeAssistant.gitops.sshKeySecret must be set when gitops is enabled" }}
+{{- if not .Values.homeAssistant.gitops.ssh.keySecret }}
+{{- fail "homeAssistant.gitops.ssh.keySecret must be set when gitops is enabled" }}
 {{- end }}
 {{- if empty .Values.homeAssistant.gitops.repos }}
 {{- fail "homeAssistant.gitops.repos must have at least one entry when gitops is enabled" }}

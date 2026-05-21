@@ -60,8 +60,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- /* Returns "true" or "" (empty string). Use with include in if-predicates: {{- if include "home-assistant.bootstrapEnabled" . }} */ -}}
 {{- define "home-assistant.bootstrapEnabled" -}}
 {{- if or .Values.homeAssistant.initContainer.tasks.setupHACS.enabled
-         .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled
-         .Values.homeAssistant.configuration.enabled -}}
+         .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled -}}
 true
 {{- end -}}
 {{- end -}}

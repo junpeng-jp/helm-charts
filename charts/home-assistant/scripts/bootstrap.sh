@@ -63,8 +63,3 @@ if [ "${SECRETS_ENABLED}" = "true" ]; then
   done
 fi
 
-if [ "${CONFIG_ENABLED}" = "true" ]; then
-  if [ ! -f /config/configuration.yaml ]; then
-    cp /run/ha-bootstrap-config/configuration.yaml /config/configuration.yaml
-  fi
-fi

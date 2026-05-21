@@ -33,12 +33,13 @@ spec:
         - name: {{ . }}
         {{- end }}
       {{- end }}
-      {{- if or .Values.homeAssistant.gitops.enabled .Values.initContainers (include "home-assistant.bootstrapEnabled" .) }}
+      {{- if or .Values.homeAssistant.gitops.enabled .Values.initContainers (include "home-assistant.bootstrapEnabled" .) (and .Values.homeAssistant.configuration.enabled .Values.homeAssistant.configuration.checkConfig.enabled) }}
       initContainers:
         {{- if .Values.homeAssistant.gitops.enabled }}
         - name: gitops-setup
           image: {{ include "home-assistant.initContainer.image" . }}
           imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
+          # Runs as root to write into /config (mounted PVC); s6 is not involved here.
           securityContext:
             runAsUser: 0
             readOnlyRootFilesystem: true
@@ -68,6 +69,7 @@ spec:
         - name: bootstrap
           image: {{ include "home-assistant.initContainer.image" . }}
           imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
+          # Runs as root; apk install (HACS) requires a writable root filesystem.
           securityContext:
             runAsUser: 0
             readOnlyRootFilesystem: false
@@ -92,10 +94,6 @@ spec:
             - name: SECRETS_DIR
               value: "/run/secrets/{{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}"
             {{- end }}
-            {{- if .Values.homeAssistant.configuration.enabled }}
-            - name: CONFIG_ENABLED
-              value: "true"
-            {{- end }}
           {{- with .Values.homeAssistant.initContainer.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -111,11 +109,6 @@ spec:
               mountPath: /run/secrets/{{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}
               readOnly: true
             {{- end }}
-            {{- if .Values.homeAssistant.configuration.enabled }}
-            - name: ha-bootstrap-config
-              mountPath: /run/ha-bootstrap-config
-              readOnly: true
-            {{- end }}
         {{- end }}
         {{- with .Values.initContainers }}
         {{- toYaml . | nindent 8 }}
@@ -124,6 +117,7 @@ spec:
         - name: check-config
           image: {{ include "home-assistant.image" . }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          # Runs as root; hass --script check_config writes temporary files under /config.
           securityContext:
             runAsUser: 0
             allowPrivilegeEscalation: false
@@ -143,6 +137,10 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+            - name: ha-configuration
+              mountPath: /config/configuration.yaml
+              subPath: configuration.yaml
+              readOnly: true
         {{- end }}
       {{- end }}
       containers:
@@ -175,6 +173,12 @@ spec:
             - name: config
               mountPath: /config
             {{- end }}
+            {{- if .Values.homeAssistant.configuration.enabled }}
+            - name: ha-configuration
+              mountPath: /config/configuration.yaml
+              subPath: configuration.yaml
+              readOnly: true
+            {{- end }}
             {{- if .Values.homeAssistant.gitops.enabled }}
             - name: gitops-sync-script
               mountPath: /config/gitops/scripts/sync.sh
@@ -186,11 +190,11 @@ spec:
               readOnly: true
             - name: gitops-ssh-key
               mountPath: /run/secrets/gitops/ssh_key
-              subPath: {{ .Values.homeAssistant.gitops.sshKeyName }}
+              subPath: id_ed25519
               readOnly: true
             - name: gitops-ha-check
               mountPath: /run/ha-check
-            {{- if .Values.homeAssistant.gitops.allowedSigners }}
+            {{- if .Values.homeAssistant.gitops.ssh.allowedSignersConfigMap }}
             - name: gitops-allowed-signers
               mountPath: /run/secrets/gitops/allowed_signers
               subPath: allowed_signers
@@ -209,6 +213,7 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- if or .Values.persistence.existingClaim .Values.homeAssistant.configuration.enabled (include "home-assistant.bootstrapEnabled" .) .Values.homeAssistant.gitops.enabled .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled .Values.secretVolumeMounts .Values.extraVolumes }}
       volumes:
         {{- if .Values.persistence.existingClaim }}
         - name: config
@@ -216,7 +221,7 @@ spec:
             claimName: {{ .Values.persistence.existingClaim }}
         {{- end }}
         {{- if .Values.homeAssistant.configuration.enabled }}
-        - name: ha-bootstrap-config
+        - name: ha-configuration
           configMap:
             name: {{ include "home-assistant.fullname" . }}-configuration
         {{- end }}
@@ -233,19 +238,19 @@ spec:
             defaultMode: 0755
         - name: gitops-known-hosts
           configMap:
-            name: {{ include "home-assistant.fullname" . }}-gitops-known-hosts
+            name: {{ .Values.homeAssistant.gitops.ssh.knownHostsConfigMap }}
         - name: gitops-ssh-key
           secret:
-            secretName: {{ .Values.homeAssistant.gitops.sshKeySecret }}
+            secretName: {{ .Values.homeAssistant.gitops.ssh.keySecret }}
             defaultMode: 0400
         - name: gitops-ha-check
           emptyDir:
             medium: Memory
             sizeLimit: {{ .Values.homeAssistant.gitops.checkDirSizeLimit }}
-        {{- if .Values.homeAssistant.gitops.allowedSigners }}
+        {{- if .Values.homeAssistant.gitops.ssh.allowedSignersConfigMap }}
         - name: gitops-allowed-signers
           configMap:
-            name: {{ include "home-assistant.fullname" . }}-gitops-allowed-signers
+            name: {{ .Values.homeAssistant.gitops.ssh.allowedSignersConfigMap }}
         {{- end }}
         {{- end }}
         {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
@@ -261,6 +266,7 @@ spec:
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+      {{- end }}
       {{- with .Values.pod.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

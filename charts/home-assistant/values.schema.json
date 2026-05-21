@@ -377,10 +377,15 @@
                 }
               }
             },
-            "sshKeySecret":      { "type": "string" },
-            "sshKeyName":        { "type": "string" },
-            "knownHosts":        { "type": "string" },
-            "allowedSigners":    { "type": "string" },
+            "ssh": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "keySecret":               { "type": "string" },
+                "knownHostsConfigMap":     { "type": "string" },
+                "allowedSignersConfigMap": { "type": "string" }
+              }
+            },
             "checkDirSizeLimit": { "type": "string" }
           }
         }

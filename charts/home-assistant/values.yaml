@@ -202,35 +202,28 @@ homeAssistant:
         enabled: false
         secretName: ""  # required when enabled is true
 
-  # configuration - bootstraps /config/configuration.yaml on first run only (write-if-not-exists).
+  # configuration - declares /config/configuration.yaml as a ConfigMap-managed file.
   # See: https://www.home-assistant.io/docs/configuration/
   #
-  # Requires persistence.enabled. The init container writes /config/configuration.yaml only if the
-  # file does not yet exist on the PVC - subsequent pod restarts leave the file untouched, so changes
-  # made via the file editor or VS Code add-on are preserved.
+  # Requires persistence.enabled. When enabled, the chart renders a ConfigMap from config below
+  # and mounts it read-only at /config/configuration.yaml in both the main container and the
+  # optional check-config init container. The declared values are authoritative on every restart.
   #
-  # The chart renders a ConfigMap (<release>-home-assistant-configuration) from the inline config
-  # map below. Specify your configuration.yaml content as a nested YAML structure under config.
-  #
-  # Example:
+  # Because the mount is read-only, Home Assistant cannot write back to configuration.yaml directly.
+  # Use HA's !include directive to route sections to PVC-managed files that HA can write freely:
   #
   #   homeAssistant:
   #     configuration:
   #       enabled: true
   #       config:
-  #         homeassistant:
-  #           name: Home
-  #           latitude: 37.7749
-  #           longitude: -122.4194
-  #           unit_system: metric
-  #           time_zone: America/Los_Angeles
+  #         homeassistant: !include homeassistant.yaml
   #         http:
   #           use_x_forwarded_for: true
   #           trusted_proxies:
   #             - 10.0.0.0/8
   configuration:
     enabled: false
-    config: {}  # nested key-value map; serialised to YAML as /config/configuration.yaml content
+    config: {}  # freeform YAML; serialised as /config/configuration.yaml content
     checkConfig:
       enabled: false  # runs 'hass --script check_config' in an init container before startup; requires configuration.enabled and persistence.enabled
       resources:
@@ -254,23 +247,25 @@ homeAssistant:
     # - name: ha-config
     #   url: git@github.com:your-org/ha-config.git
 
-    # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
-    # Create the secret with the key name matching sshKeyName below:
-    #   kubectl create secret generic ha-gitops-ssh \
-    #     --from-file=id_ed25519=./ssh/id_ed25519
-    # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
-    sshKeySecret: ""
+    ssh:
+      # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
+      # The secret must have a key named 'id_ed25519':
+      #   kubectl create secret generic ha-gitops-ssh \
+      #     --from-file=id_ed25519=./ssh/id_ed25519
+      # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
+      keySecret: ""
 
-    # Key name inside the sshKeySecret to use as the deploy key.
-    # Change this if your Secret uses a different key name (e.g. id_rsa, id_ecdsa).
-    sshKeyName: id_ed25519
+      # Name of an existing ConfigMap with a 'known_hosts' key for verifying the git host's
+      # identity. Required when enabled. Create it with:
+      #   kubectl create configmap gitops-known-hosts --from-file=known_hosts=./known_hosts
+      knownHostsConfigMap: ""
 
-    # SSH known_hosts content for verifying the git host's identity. Required when enabled.
-    knownHosts: ""
-
-    # SSH allowed_signers content for commit/tag signature verification.
-    # When set, every sync verifies the fetched commit or annotated tag against these signers.
-    allowedSigners: ""
+      # Name of an existing ConfigMap with an 'allowed_signers' key for commit/tag signature
+      # verification. When set, every sync verifies the fetched commit or annotated tag.
+      # Create it with:
+      #   kubectl create configmap gitops-allowed-signers \
+      #     --from-file=allowed_signers=./allowed_signers
+      allowedSignersConfigMap: ""
 
     # Maximum size of the in-memory tmpfs used as the git worktree checkout directory.
     # Increase if your config repo is large.
