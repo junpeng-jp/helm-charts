@@ -85,7 +85,7 @@ spec:
               readOnly: true
             - name: gitops-ssh-key
               mountPath: /run/secrets/gitops/ssh_key
-              subPath: id_ed25519
+              subPath: {{ .Values.homeAssistant.gitops.ssh.secretKey }}
               readOnly: true
             - name: gitops-ha-check
               mountPath: /run/ha-check

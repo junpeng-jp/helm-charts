@@ -8,7 +8,7 @@ tests:
     set:
       homeAssistant.gitops.enabled: true
       homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
+      homeAssistant.gitops.ssh.secretName: ha-gitops-ssh
       homeAssistant.gitops.repos:
         - name: ha-config
           url: "git@github.com:example/ha-config.git"
