@@ -381,7 +381,8 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "keySecret":               { "type": "string" },
+                "secretName":              { "type": "string" },
+                "secretKey":               { "type": "string" },
                 "knownHostsConfigMap":     { "type": "string" },
                 "allowedSignersConfigMap": { "type": "string" }
               }

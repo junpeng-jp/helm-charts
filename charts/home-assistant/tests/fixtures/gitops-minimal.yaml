@@ -3,7 +3,7 @@ homeAssistant:
     enabled: true
     ssh:
       knownHostsConfigMap: gitops-known-hosts
-      keySecret: ha-gitops-ssh
+      secretName: ha-gitops-ssh
     repos:
       - name: ha-config
         url: "git@github.com:example/ha-config.git"

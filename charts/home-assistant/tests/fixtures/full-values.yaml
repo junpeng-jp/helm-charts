@@ -78,6 +78,6 @@ homeAssistant:
       - name: ha-config
         url: "git@github.com:example/ha-config.git"
     ssh:
-      keySecret: ha-gitops-ssh-key
+      secretName: ha-gitops-ssh-key
       knownHostsConfigMap: gitops-known-hosts
       allowedSignersConfigMap: gitops-allowed-signers

@@ -2,3 +2,6 @@
 # devbox
 .devbox
 .env
+
+# local-only file dir
+.local

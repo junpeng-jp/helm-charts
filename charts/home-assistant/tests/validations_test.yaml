@@ -202,23 +202,23 @@ tests:
       - failedTemplate:
           errorMessage: "homeAssistant.gitops.ssh.knownHostsConfigMap must be set when gitops is enabled"
 
-  - it: fails when gitops is enabled without ssh.keySecret
+  - it: fails when gitops is enabled without ssh.secretName
     set:
       homeAssistant.gitops.enabled: true
       homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ""
+      homeAssistant.gitops.ssh.secretName: ""
       homeAssistant.gitops.repos:
         - name: ha-config
           url: "git@github.com:example/ha-config.git"
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.gitops.ssh.keySecret must be set when gitops is enabled"
+          errorMessage: "homeAssistant.gitops.ssh.secretName must be set when gitops is enabled"
 
   - it: fails when gitops is enabled without repos
     set:
       homeAssistant.gitops.enabled: true
       homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
+      homeAssistant.gitops.ssh.secretName: ha-gitops-ssh
       homeAssistant.gitops.repos: []
     asserts:
       - failedTemplate:
@@ -228,7 +228,7 @@ tests:
     set:
       homeAssistant.gitops.enabled: true
       homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.keySecret: ha-gitops-ssh
+      homeAssistant.gitops.ssh.secretName: ha-gitops-ssh
       homeAssistant.gitops.repos:
         - name: ha-config
           url: "git@github.com:example/ha-config.git"

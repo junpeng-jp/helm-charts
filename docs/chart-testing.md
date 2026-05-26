@@ -34,12 +34,12 @@ Charts without an HTTP health endpoint can omit `templates/tests/` entirely.
 chart-dirs:
   - charts
 target-branch: main
-helm-extra-args: "--timeout 5m"
+helm-extra-args: "--timeout 10m"
 ```
 
 ### `kind-config.yaml`
 
-Single control-plane node. No workers needed for these single-app charts.
+One control-plane node and one worker node. Workloads run on the worker so the control-plane taint does not block scheduling.
 
 ```yaml
 # kind-config.yaml
@@ -47,6 +47,7 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
   - role: control-plane
+  - role: worker
 ```
 
 ---
@@ -109,5 +110,5 @@ Two tasks are provided in devbox to execute chart testing locally. See `scripts/
 devbox run ct:test
 
 # Test a single chart
-CHART=home-assistant devbox run ct:test-chart
+CHART=home-assistant devbox run ct:test
 ```

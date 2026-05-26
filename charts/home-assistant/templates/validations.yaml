@@ -89,8 +89,8 @@
 {{- if not .Values.homeAssistant.gitops.ssh.knownHostsConfigMap }}
 {{- fail "homeAssistant.gitops.ssh.knownHostsConfigMap must be set when gitops is enabled" }}
 {{- end }}
-{{- if not .Values.homeAssistant.gitops.ssh.keySecret }}
-{{- fail "homeAssistant.gitops.ssh.keySecret must be set when gitops is enabled" }}
+{{- if not .Values.homeAssistant.gitops.ssh.secretName }}
+{{- fail "homeAssistant.gitops.ssh.secretName must be set when gitops is enabled" }}
 {{- end }}
 {{- if empty .Values.homeAssistant.gitops.repos }}
 {{- fail "homeAssistant.gitops.repos must have at least one entry when gitops is enabled" }}

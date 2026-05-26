@@ -202,7 +202,7 @@ true
     name: {{ .Values.homeAssistant.gitops.ssh.knownHostsConfigMap }}
 - name: gitops-ssh-key
   secret:
-    secretName: {{ .Values.homeAssistant.gitops.ssh.keySecret }}
+    secretName: {{ .Values.homeAssistant.gitops.ssh.secretName }}
     defaultMode: 0400
 - name: gitops-ha-check
   emptyDir:

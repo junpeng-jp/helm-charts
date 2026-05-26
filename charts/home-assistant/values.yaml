@@ -232,11 +232,14 @@ homeAssistant:
 
     ssh:
       # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
-      # The secret must have a key named 'id_ed25519':
+      # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
+      secretName: ""
+
+      # Key within the Secret that holds the private key.
+      # Defaults to 'id_ed25519'. Override to match the secret key's name.
       #   kubectl create secret generic ha-gitops-ssh \
       #     --from-file=id_ed25519=./ssh/id_ed25519
-      # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
-      keySecret: ""
+      secretKey: "id_ed25519"
 
       # Name of an existing ConfigMap with a 'known_hosts' key for verifying the git host's
       # identity. Required when enabled. Create it with:
