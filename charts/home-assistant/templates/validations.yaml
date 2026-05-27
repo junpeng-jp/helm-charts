@@ -15,36 +15,19 @@
 {{- end }}
 {{- end }}
 
-# ingress
+# ingress: at most one ingress method may be active, and the enabled method requires networking.service.app with an http port
 {{- if and .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled }}
 {{- fail "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)" }}
 {{- end }}
 {{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (not .Values.networking.service.app.enabled) }}
 {{- fail (printf "%s requires networking.service.app to be enabled" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
 {{- end }}
-{{- if and .Values.ingress.traefik.tls.enabled (not .Values.ingress.traefik.tls.secretName) (not .Values.ingress.traefik.tls.certResolver) }}
-{{- fail "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set" }}
-{{- end }}
-{{- range list
-    (dict "enabled" .Values.ingress.gateway.enabled "hostnames" .Values.ingress.gateway.hostnames "name" "ingress.gateway")
-    (dict "enabled" .Values.ingress.traefik.enabled "hostnames" .Values.ingress.traefik.hostnames "name" "ingress.traefik")
-}}
-{{- if and .enabled (empty .hostnames) }}
-{{- fail (printf "%s.hostnames must have at least one entry when %s is enabled" .name .name) }}
-{{- end }}
-{{- end }}
-{{- if and .Values.ingress.gateway.enabled (empty .Values.ingress.gateway.parentRefs) }}
-{{- fail "ingress.gateway.parentRefs must have at least one entry when ingress.gateway is enabled" }}
-{{- end }}
 {{- $httpPort := index .Values.networking.service.app.ports "http" }}
 {{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (or (not $httpPort) (eq (get $httpPort "enabled") false)) }}
 {{- fail (printf "%s requires networking.service.app.ports.http to be defined and enabled" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
 {{- end }}
 
-# persistence
-{{- if and .Values.persistence.existingClaim .Values.persistence.existingVolume }}
-{{- fail "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one" }}
-{{- end }}
+# persistence: existingClaim and existingVolume have no effect unless persistence.enabled, and ReadWriteOnce is incompatible with replicaCount > 1
 {{- if and .Values.persistence.existingClaim (not .Values.persistence.enabled) }}
 {{- fail "persistence.existingClaim has no effect when persistence.enabled is false; set persistence.enabled: true" }}
 {{- end }}
@@ -60,7 +43,7 @@
     (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupHACS.enabled        "msg" "homeAssistant.initContainer.tasks.setupHACS requires persistence.enabled to be true")
     (dict "enabled" .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled "msg" "homeAssistant.initContainer.tasks.setupSecretsYaml requires persistence.enabled to be true")
     (dict "enabled" .Values.homeAssistant.configuration.enabled "msg" "homeAssistant.configuration.enabled requires persistence.enabled to be true")
-    (dict "enabled" .Values.homeAssistant.gitops.enabled "msg" "homeAssistant.gitops.enabled requires persistence.enabled to be true")
+    (dict "enabled" .Values.homeAssistant.initContainer.tasks.gitops.enabled "msg" "homeAssistant.initContainer.tasks.gitops.enabled requires persistence.enabled to be true")
 }}
 {{- range $needsPersistence }}
 {{- if and .enabled (not $.Values.persistence.enabled) }}
@@ -68,36 +51,12 @@
 {{- end }}
 {{- end }}
 
-# init-container tasks
-{{- if and .Values.homeAssistant.initContainer.tasks.setupHACS.enabled (not .Values.homeAssistant.initContainer.tasks.setupHACS.version) }}
-{{- fail "homeAssistant.initContainer.tasks.setupHACS.version must be set when setupHACS is enabled" }}
-{{- end }}
-{{- if and .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled (not .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName) }}
-{{- fail "homeAssistant.initContainer.tasks.setupSecretsYaml.secretName must be set when setupSecretsYaml is enabled" }}
-{{- end }}
-
-# configuration
-{{- if and .Values.homeAssistant.configuration.enabled (empty .Values.homeAssistant.configuration.config) }}
-{{- fail "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true" }}
-{{- end }}
+# configuration: checkConfig requires homeAssistant.configuration.enabled
 {{- if and .Values.homeAssistant.configuration.checkConfig.enabled (not .Values.homeAssistant.configuration.enabled) }}
 {{- fail "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true" }}
 {{- end }}
 
-# gitops
-{{- if .Values.homeAssistant.gitops.enabled }}
-{{- if not .Values.homeAssistant.gitops.ssh.knownHostsConfigMap }}
-{{- fail "homeAssistant.gitops.ssh.knownHostsConfigMap must be set when gitops is enabled" }}
-{{- end }}
-{{- if not .Values.homeAssistant.gitops.ssh.secretName }}
-{{- fail "homeAssistant.gitops.ssh.secretName must be set when gitops is enabled" }}
-{{- end }}
-{{- if empty .Values.homeAssistant.gitops.repos }}
-{{- fail "homeAssistant.gitops.repos must have at least one entry when gitops is enabled" }}
-{{- end }}
-{{- end }}
-
-# secretVolumeMounts
+# secretVolumeMounts: each volume name (secretName, or .name if set) must be unique across all entries
 {{- $seen := dict }}
 {{- range .Values.secretVolumeMounts }}
 {{- $volName := .name | default .secretName }}
@@ -116,7 +75,7 @@
 {{- end }}
 {{- end }}
 
-# monitor
+# monitor: monitor.metric.port must reference an enabled port in at least one enabled service
 {{- if .Values.monitor.metric.enabled }}
 {{- $metricPort := .Values.monitor.metric.port }}
 {{- $allPorts := list }}

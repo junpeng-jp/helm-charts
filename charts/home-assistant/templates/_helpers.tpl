@@ -66,14 +66,14 @@ true
 {{- end }}
 
 {{- define "home-assistant.initContainers" -}}
-{{- if .Values.homeAssistant.gitops.enabled }}
+{{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled }}
 - name: gitops-setup
   image: {{ include "home-assistant.initContainer.image" . }}
   imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
-  # Runs as root to write into /config (mounted PVC); s6 is not involved here.
+  # Runs as root; apk install requires a writable root filesystem.
   securityContext:
     runAsUser: 0
-    readOnlyRootFilesystem: true
+    readOnlyRootFilesystem: false
     allowPrivilegeEscalation: false
     capabilities:
       drop: [ALL]
@@ -82,10 +82,26 @@ true
     - -c
     - |
       set -e
-      mkdir -p /config/gitops/scripts
-      {{- range .Values.homeAssistant.gitops.repos }}
-      mkdir -p /config/gitops/{{ .name }}
-      printf '%s\n' {{ .url | quote }} > /config/gitops/{{ .name }}/remote
+      apk add --no-cache git >/dev/null
+      rm -rf /config/.gitops
+      mkdir -p /config/.gitops/allowed-signers
+      printf '%b' {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.knownHosts | quote }} > /config/.gitops/known_hosts
+      {
+        printf '%s\n' 'Host *'
+        printf '%s\n' '  IdentityFile /run/secrets/gitops/ssh_key'
+        printf '%s\n' '  UserKnownHostsFile /config/.gitops/known_hosts'
+        printf '%s\n' '  StrictHostKeyChecking yes'
+        printf '%s\n' '  IdentitiesOnly yes'
+      } > /config/.gitops/ssh_config
+      {{- range .Values.homeAssistant.initContainer.tasks.gitops.repos }}
+      git init /config/gitops/{{ .name }}
+      git -C /config/gitops/{{ .name }} remote set-url origin {{ .url | quote }} 2>/dev/null || \
+        git -C /config/gitops/{{ .name }} remote add origin {{ .url | quote }}
+      git -C /config/gitops/{{ .name }} config core.sshCommand 'ssh -F /config/.gitops/ssh_config'
+      {{- if .allowedSigners }}
+      printf '%b' {{ .allowedSigners | quote }} > /config/.gitops/allowed-signers/{{ .name }}
+      git -C /config/gitops/{{ .name }} config gpg.ssh.allowedSignersFile /config/.gitops/allowed-signers/{{ .name }}
+      {{- end }}
       {{- end }}
   {{- with .Values.homeAssistant.initContainer.resources }}
   resources:
@@ -192,27 +208,11 @@ true
     name: {{ include "home-assistant.fullname" . }}-init-scripts
     defaultMode: 0755
 {{- end }}
-{{- if .Values.homeAssistant.gitops.enabled }}
-- name: gitops-sync-script
-  configMap:
-    name: {{ include "home-assistant.fullname" . }}-gitops-sync-script
-    defaultMode: 0755
-- name: gitops-known-hosts
-  configMap:
-    name: {{ .Values.homeAssistant.gitops.ssh.knownHostsConfigMap }}
+{{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled }}
 - name: gitops-ssh-key
   secret:
-    secretName: {{ .Values.homeAssistant.gitops.ssh.secretName }}
+    secretName: {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.secretName }}
     defaultMode: 0400
-- name: gitops-ha-check
-  emptyDir:
-    medium: Memory
-    sizeLimit: {{ .Values.homeAssistant.gitops.gitWorkspaceSizeLimit }}
-{{- if .Values.homeAssistant.gitops.ssh.allowedSignersConfigMap }}
-- name: gitops-allowed-signers
-  configMap:
-    name: {{ .Values.homeAssistant.gitops.ssh.allowedSignersConfigMap }}
-{{- end }}
 {{- end }}
 {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
 - name: {{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}

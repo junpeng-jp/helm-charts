@@ -7,7 +7,7 @@ tests:
     template: templates/configmap-configuration.yaml
     set:
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
+      homeAssistant.configuration.content: |
         homeassistant:
           name: Home
     asserts:
@@ -22,6 +22,19 @@ tests:
             homeassistant:
               name: Home
 
+  - it: passes !include tags through verbatim without mangling
+    template: templates/configmap-configuration.yaml
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.content: "automation: !include automations.yaml\nscript: !include scripts.yaml\n"
+    asserts:
+      - matchRegex:
+          path: data["configuration.yaml"]
+          pattern: "!include automations.yaml"
+      - matchRegex:
+          path: data["configuration.yaml"]
+          pattern: "!include scripts.yaml"
+
   - it: does not render configuration ConfigMap when disabled
     template: templates/configmap-configuration.yaml
     set:
@@ -34,7 +47,7 @@ tests:
     template: templates/statefulset.yaml
     set:
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
+      homeAssistant.configuration.content: |
         homeassistant:
           name: Home
       homeAssistant.configuration.checkConfig.enabled: true
@@ -56,4 +69,3 @@ tests:
             mountPath: /config/configuration.yaml
             subPath: configuration.yaml
             readOnly: true
-

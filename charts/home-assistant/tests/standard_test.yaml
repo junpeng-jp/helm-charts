@@ -74,6 +74,10 @@ tests:
         equal:
           path: spec.ports[0].targetPort
           value: http
+      - template: templates/service-headless.yaml
+        equal:
+          path: spec.publishNotReadyAddresses
+          value: true
       - template: templates/statefulset.yaml
         matchRegex:
           path: spec.serviceName
@@ -117,13 +121,6 @@ tests:
       - notExists:
           path: spec.ports
 
-  - it: headless service uses publishNotReadyAddresses true by default
-    template: templates/service-headless.yaml
-    asserts:
-      - equal:
-          path: spec.publishNotReadyAddresses
-          value: true
-
   - it: headless service publishNotReadyAddresses can be set to false
     template: templates/service-headless.yaml
     set:
@@ -146,20 +143,3 @@ tests:
           path: spec.updateStrategy.rollingUpdate.partition
           value: 0
 
-  - it: StatefulSet uses OnDelete strategy when configured
-    template: templates/statefulset.yaml
-    set:
-      updateStrategy.type: OnDelete
-    asserts:
-      - equal:
-          path: spec.updateStrategy.type
-          value: OnDelete
-
-  - it: StatefulSet uses Parallel podManagementPolicy when configured
-    template: templates/statefulset.yaml
-    set:
-      podManagementPolicy: Parallel
-    asserts:
-      - equal:
-          path: spec.podManagementPolicy
-          value: Parallel

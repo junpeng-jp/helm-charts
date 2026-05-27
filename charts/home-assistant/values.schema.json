@@ -175,7 +175,9 @@
                   }
                 }
               }
-            }
+            },
+            "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+            "then": { "required": ["ports"], "properties": { "ports": { "minProperties": 1 } } }
           }
         }
       }
@@ -189,9 +191,11 @@
           "additionalProperties": false,
           "properties": {
             "enabled":    { "type": "boolean" },
-            "parentRefs": { "type": "array", "items": { "type": "object" } },
-            "hostnames":  { "type": "array", "items": { "type": "string" } }
-          }
+            "parentRefs": { "type": "array", "items": { "type": "object" }, "minItems": 1 },
+            "hostnames":  { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          },
+          "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+          "then": { "required": ["hostnames", "parentRefs"] }
         },
         "traefik": {
           "type": "object",
@@ -199,7 +203,7 @@
           "properties": {
             "enabled":     { "type": "boolean" },
             "entryPoints": { "type": "array", "items": { "type": "string" } },
-            "hostnames":   { "type": "array", "items": { "type": "string" } },
+            "hostnames":   { "type": "array", "items": { "type": "string" }, "minItems": 1 },
             "middlewares": {
               "type": "array",
               "items": {
@@ -219,9 +223,18 @@
                 "enabled":      { "type": "boolean" },
                 "secretName":   { "type": "string" },
                 "certResolver": { "type": "string" }
+              },
+              "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+              "then": {
+                "anyOf": [
+                  { "required": ["secretName"],   "properties": { "secretName":   { "minLength": 1 } } },
+                  { "required": ["certResolver"], "properties": { "certResolver": { "minLength": 1 } } }
+                ]
               }
             }
-          }
+          },
+          "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+          "then": { "required": ["hostnames"] }
         }
       }
     },
@@ -237,6 +250,19 @@
         "labels":        { "type": "object" },
         "existingClaim":  { "type": "string" },
         "existingVolume": { "type": "string" }
+      },
+      "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+      "then": {
+        "anyOf": [
+          { "required": ["existingClaim"], "properties": { "existingClaim": { "minLength": 1 } } },
+          { "required": ["size"],         "properties": { "size":          { "minLength": 1 } } }
+        ]
+      },
+      "not": {
+        "allOf": [
+          { "properties": { "existingClaim":  { "minLength": 1 } }, "required": ["existingClaim"] },
+          { "properties": { "existingVolume": { "minLength": 1 } }, "required": ["existingVolume"] }
+        ]
       }
     },
     "monitor": {
@@ -253,6 +279,14 @@
             "interval":      { "type": "string" },
             "scrapeTimeout": { "type": "string" },
             "labels":        { "type": "object" }
+          },
+          "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+          "then": {
+            "required": ["path", "port"],
+            "properties": {
+              "path": { "minLength": 1 },
+              "port": { "minLength": 1 }
+            }
           }
         }
       }
@@ -309,6 +343,11 @@
                     "enabled": { "type": "boolean" },
                     "version": { "type": "string" },
                     "sha256":  { "type": "string" }
+                  },
+                  "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+                  "then": {
+                    "required": ["version"],
+                    "properties": { "version": { "minLength": 1 } }
                   }
                 },
                 "setupSecretsYaml": {
@@ -317,6 +356,54 @@
                   "properties": {
                     "enabled":    { "type": "boolean" },
                     "secretName": { "type": "string" }
+                  },
+                  "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+                  "then": {
+                    "required": ["secretName"],
+                    "properties": { "secretName": { "minLength": 1 } }
+                  }
+                },
+                "gitops": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "repos": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["name", "url"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "name":           { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" },
+                          "url":            { "type": "string" },
+                          "allowedSigners": { "type": "string" }
+                        }
+                      }
+                    },
+                    "ssh": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretName":  { "type": "string" },
+                        "secretKey":   { "type": "string" },
+                        "knownHosts":  { "type": "string" }
+                      }
+                    }
+                  },
+                  "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+                  "then": {
+                    "required": ["repos", "ssh"],
+                    "properties": {
+                      "repos": { "minItems": 1 },
+                      "ssh": {
+                        "required": ["knownHosts", "secretName"],
+                        "properties": {
+                          "knownHosts": { "minLength": 1 },
+                          "secretName": { "minLength": 1 }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -328,7 +415,7 @@
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "config":  { "type": "object" },
+            "content": { "type": "string" },
             "checkConfig": {
               "type": "object",
               "additionalProperties": false,
@@ -358,36 +445,11 @@
                 }
               }
             }
-          }
-        },
-        "gitops": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "repos": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["name", "url"],
-                "additionalProperties": false,
-                "properties": {
-                  "name": { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "url":  { "type": "string" }
-                }
-              }
-            },
-            "ssh": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "secretName":              { "type": "string" },
-                "secretKey":               { "type": "string" },
-                "knownHostsConfigMap":     { "type": "string" },
-                "allowedSignersConfigMap": { "type": "string" }
-              }
-            },
-            "gitWorkspaceSizeLimit": { "type": "string" }
+          },
+          "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+          "then": {
+            "required": ["content"],
+            "properties": { "content": { "minLength": 1 } }
           }
         }
       }

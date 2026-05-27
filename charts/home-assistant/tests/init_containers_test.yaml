@@ -12,9 +12,6 @@ tests:
       homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
       homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
       homeAssistant.configuration.checkConfig.enabled: true
     asserts:
       - equal:
@@ -53,7 +50,7 @@ tests:
           path: spec.template.spec.initContainers[0].securityContext.runAsNonRoot
       - equal:
           path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
-          value: true
+          value: false
       - equal:
           path: spec.template.spec.initContainers[0].securityContext.allowPrivilegeEscalation
           value: false
@@ -127,9 +124,6 @@ tests:
   - it: check-config uses homeAssistant.configuration.checkConfig.resources when overridden
     set:
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
       homeAssistant.configuration.checkConfig.enabled: true
       homeAssistant.configuration.checkConfig.resources:
         requests:
@@ -142,14 +136,35 @@ tests:
           path: spec.template.spec.initContainers[0].resources.requests.memory
           value: 512Mi
 
+  - it: bootstrap mounts config PVC and init-scripts ConfigMap; no secrets volume when setupSecretsYaml is disabled
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: bootstrap
+      - equal:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+            - name: init-scripts
+              mountPath: /run/init-scripts
+              readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: init-scripts
+            configMap:
+              name: RELEASE-NAME-home-assistant-init-scripts
+              defaultMode: 493
+
   - it: check-config mounts config PVC and configuration ConfigMap; gitops volumes are excluded
     values:
       - fixtures/gitops-minimal.yaml
     set:
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
       homeAssistant.configuration.checkConfig.enabled: true
     asserts:
       - equal:

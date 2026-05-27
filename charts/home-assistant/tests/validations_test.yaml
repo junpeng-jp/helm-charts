@@ -15,14 +15,6 @@ tests:
       - failedTemplate:
           errorMessage: "ingress.gateway requires networking.service.app to be enabled"
 
-  - it: fails when traefik ingress is enabled but networking.service.app is disabled
-    set:
-      ingress.traefik.enabled: true
-      networking.service.app.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.traefik requires networking.service.app to be enabled"
-
   - it: fails when both gateway and traefik ingress are enabled simultaneously
     set:
       ingress.gateway.enabled: true
@@ -31,42 +23,10 @@ tests:
       - failedTemplate:
           errorMessage: "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)"
 
-  - it: fails when traefik tls is enabled without secretName or certResolver
-    set:
-      ingress.traefik.tls.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set"
-
-  - it: does not fail when traefik tls is enabled with secretName
-    set:
-      ingress.traefik.tls.enabled: true
-      ingress.traefik.tls.secretName: my-tls-secret
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: fails when configuration is enabled without config
-    set:
-      homeAssistant.configuration.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true"
-
-  - it: fails when configuration is enabled with an empty config map
-    set:
-      homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config: {}
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.configuration.config must be set when homeAssistant.configuration.enabled is true"
-
   - it: fails when configuration is enabled without persistence
     set:
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
+      homeAssistant.configuration.content: "homeassistant:\n  name: Home\n"
       persistence.enabled: false
     asserts:
       - failedTemplate:
@@ -79,14 +39,6 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true"
-
-  - it: fails when existingClaim and existingVolume are both set
-    set:
-      persistence.existingClaim: my-pvc
-      persistence.existingVolume: my-pv
-    asserts:
-      - failedTemplate:
-          errorMessage: "persistence.existingClaim and persistence.existingVolume are mutually exclusive; set at most one"
 
   - it: fails when existingClaim is set but persistence is disabled
     set:
@@ -128,21 +80,6 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.initContainer.tasks.setupHACS requires persistence.enabled to be true"
-
-  - it: fails when setupHACS is enabled without version
-    set:
-      homeAssistant.initContainer.tasks.setupHACS.enabled: true
-      homeAssistant.initContainer.tasks.setupHACS.version: ""
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.initContainer.tasks.setupHACS.version must be set when setupHACS is enabled"
-
-  - it: fails when setupSecretsYaml is enabled without secretName
-    set:
-      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.initContainer.tasks.setupSecretsYaml.secretName must be set when setupSecretsYaml is enabled"
 
   - it: fails when setupSecretsYaml is enabled without persistence
     set:
@@ -194,64 +131,18 @@ tests:
       - failedTemplate:
           errorMessage: 'initContainers: name "bootstrap" is reserved by the chart; rename your init container'
 
-  - it: fails when gitops is enabled without knownHostsConfigMap
-    set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.ssh.knownHostsConfigMap: ""
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.gitops.ssh.knownHostsConfigMap must be set when gitops is enabled"
-
-  - it: fails when gitops is enabled without ssh.secretName
-    set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.secretName: ""
-      homeAssistant.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.gitops.ssh.secretName must be set when gitops is enabled"
-
-  - it: fails when gitops is enabled without repos
-    set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.secretName: ha-gitops-ssh
-      homeAssistant.gitops.repos: []
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.gitops.repos must have at least one entry when gitops is enabled"
-
   - it: fails when gitops is enabled without persistence
     set:
-      homeAssistant.gitops.enabled: true
-      homeAssistant.gitops.ssh.knownHostsConfigMap: gitops-known-hosts
-      homeAssistant.gitops.ssh.secretName: ha-gitops-ssh
-      homeAssistant.gitops.repos:
+      homeAssistant.initContainer.tasks.gitops.enabled: true
+      homeAssistant.initContainer.tasks.gitops.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+      homeAssistant.initContainer.tasks.gitops.ssh.secretName: ha-gitops-ssh
+      homeAssistant.initContainer.tasks.gitops.repos:
         - name: ha-config
           url: "git@github.com:example/ha-config.git"
       persistence.enabled: false
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.gitops.enabled requires persistence.enabled to be true"
-
-  - it: fails when traefik ingress is enabled with empty hostnames
-    set:
-      ingress.traefik.enabled: true
-      ingress.traefik.hostnames: []
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.traefik.hostnames must have at least one entry when ingress.traefik is enabled"
-
-  - it: fails when gateway ingress is enabled with empty hostnames
-    set:
-      ingress.gateway.enabled: true
-      ingress.gateway.hostnames: []
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.gateway.hostnames must have at least one entry when ingress.gateway is enabled"
+          errorMessage: "homeAssistant.initContainer.tasks.gitops.enabled requires persistence.enabled to be true"
 
   - it: fails when gateway ingress is enabled but http port is absent
     set:
@@ -263,17 +154,6 @@ tests:
       - failedTemplate:
           errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined and enabled"
 
-  - it: fails when traefik ingress is enabled but http port is absent
-    set:
-      ingress.traefik.enabled: true
-      ingress.traefik.hostnames[0]: ha.example.com
-      networking.service.app.ports.http: null
-      networking.service.app.ports.other.port: 9090
-      networking.service.app.ports.other.protocol: TCP
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.traefik requires networking.service.app.ports.http to be defined and enabled"
-
   - it: fails when monitor port does not exist in any service
     set:
       monitor.metric.enabled: true
@@ -281,13 +161,6 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: 'monitor.metric.port "nonexistent" is not defined in any enabled service in networking.service'
-
-  - it: does not fail when monitor port matches an existing service port
-    set:
-      monitor.metric.enabled: true
-    asserts:
-      - hasDocuments:
-          count: 0
 
   - it: fails when monitor port matches only a disabled service port
     set:

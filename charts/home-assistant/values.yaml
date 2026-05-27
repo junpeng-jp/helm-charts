@@ -20,6 +20,7 @@ global:
 
 nameOverride: ""
 fullnameOverride: ""
+# Keep at 1 when using ReadWriteOnce storage. Multiple replicas require ReadWriteMany.
 replicaCount: 1
 podManagementPolicy: OrderedReady
 updateStrategy:
@@ -109,6 +110,7 @@ pod:
   affinity: {}
   hostNetwork: false    # Enable only if you want to have auto-discovery of wifi devices via mDNS
 
+# Add services and ports here. Ingress and monitor.metric.port reference ports by their key name.
 networking:
   headlessService:
     publishNotReadyAddresses: true  # include not-yet-ready pods in headless DNS, required for StatefulSet rolling restarts
@@ -121,6 +123,7 @@ networking:
           port: 8123
           protocol: TCP
 
+# Enable gateway (Gateway API) or traefik (Traefik IngressRoute), but not both.
 ingress:
   gateway:
     enabled: false
@@ -153,6 +156,7 @@ persistence:
   existingClaim: ""   # use an existing PVC directly (skips volumeClaimTemplate)
   existingVolume: ""  # bind the volumeClaimTemplate to a specific PV by name, mutually exclusive with existingClaim
 
+# Creates a PodMonitor for the Prometheus Operator. Requires the CRD to be installed in your cluster.
 monitor:
   metric:
     enabled: false
@@ -192,67 +196,64 @@ homeAssistant:
         enabled: false
         secretName: ""  # required when enabled is true
 
+      # Sets up SSH credentials and git scaffolding for gitops-managed configuration.
+      # Requires persistence.enabled. The init container writes all non-secret git config
+      # (ssh_config, known_hosts, per-repo allowed_signers) to /config/.gitops/ on the PVC
+      # on every pod start, wiping and recreating the directory to remove stale files.
+      # Only the SSH private key is mounted from a Kubernetes Secret.
+      gitops:
+        enabled: false
+
+        # Git repositories to initialise. The init container runs 'git init', registers the
+        # remote URL, and sets core.sshCommand for each repo. Required when enabled.
+        repos: []
+        # - name: ha-config
+        #   url: git@github.com:your-org/ha-config.git
+        #   allowedSigners: |      # optional: inline SSH public keys trusted to sign commits/tags
+        #     user@example.com ssh-ed25519 AAAAC3...
+
+        ssh:
+          # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
+          # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
+          secretName: ""
+
+          # Key within the Secret that holds the private key. Defaults to 'id_ed25519'.
+          secretKey: "id_ed25519"
+
+          # Raw known_hosts content for verifying the git host's identity. Required when enabled.
+          # Obtain with: ssh-keyscan <hostname>
+          knownHosts: ""
+
   # Manages /config/configuration.yaml as a read-only ConfigMap mount. Requires persistence.enabled.
   # See: https://www.home-assistant.io/docs/configuration/
   #
-  # Because the mount is read-only, Home Assistant cannot write back to configuration.yaml.
-  # Use HA's !include directive to route mutable sections to PVC-managed files:
+  # content is a raw YAML string written verbatim to /config/configuration.yaml.
+  # Use a literal block scalar (|) in your values file so that HA-specific tags such as
+  # !include and !include_dir_named are preserved exactly as written:
   #
   #   homeAssistant:
   #     configuration:
   #       enabled: true
-  #       config:
-  #         homeassistant: !include homeassistant.yaml
+  #       content: |
+  #         homeassistant:
+  #           packages: !include_dir_named packages/
   #         http:
   #           use_x_forwarded_for: true
   #           trusted_proxies:
   #             - 10.0.0.0/8
   configuration:
     enabled: false
-    config: {}  # freeform YAML, serialised as /config/configuration.yaml content
+    # Raw string written verbatim as /config/configuration.yaml.
+    # The default delegates all configuration to the packages/ directory on the PVC,
+    # which is the recommended approach for gitops-managed installs.
+    # Override with a literal block scalar (|) to add singleton config (http, logger, etc.)
+    # or !include directives for UI-managed files.
+    content: |
+      homeassistant:
+        packages: !include_dir_named packages/
     checkConfig:
       enabled: false  # runs 'hass --script check_config' in an init container before startup. requires configuration.enabled and persistence.enabled
       resources:
         requests:
           memory: 256Mi
           cpu: 100m
-
-  # Mounts sync.sh for git-managed configuration. Requires persistence.enabled.
-  # sync.sh fetches a git ref, validates with 'hass --script check_config', and copies
-  # specified paths to their destinations. Trigger it from a shell_command automation,
-  # passing --repo, --ref, and --copy arguments.
-  gitops:
-    enabled: false
-
-    # Git repositories to register. An init container writes the remote URL for each repo to
-    # /config/gitops/<name>/remote on the PVC before Home Assistant starts. Required when enabled.
-    repos: []
-    # - name: ha-config
-    #   url: git@github.com:your-org/ha-config.git
-
-    ssh:
-      # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
-      # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
-      secretName: ""
-
-      # Key within the Secret that holds the private key.
-      # Defaults to 'id_ed25519'. Override to match the secret key's name.
-      #   kubectl create secret generic ha-gitops-ssh \
-      #     --from-file=id_ed25519=./ssh/id_ed25519
-      secretKey: "id_ed25519"
-
-      # Name of an existing ConfigMap with a 'known_hosts' key for verifying the git host's
-      # identity. Required when enabled. Create it with:
-      #   kubectl create configmap gitops-known-hosts --from-file=known_hosts=./known_hosts
-      knownHostsConfigMap: ""
-
-      # Name of an existing ConfigMap with an 'allowed_signers' key for commit/tag signature
-      # verification. When set, every sync verifies the fetched commit or annotated tag.
-      # Create it with:
-      #   kubectl create configmap gitops-allowed-signers \
-      #     --from-file=allowed_signers=./allowed_signers
-      allowedSignersConfigMap: ""
-
-    # Maximum size of the in-memory tmpfs used as the git worktree checkout directory.
-    # Increase if your config repo is large.
-    gitWorkspaceSizeLimit: 256Mi

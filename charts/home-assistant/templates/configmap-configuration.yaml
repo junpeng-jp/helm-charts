@@ -7,5 +7,5 @@ metadata:
     {{- include "home-assistant.labels" . | nindent 4 }}
 data:
   configuration.yaml: |
-    {{- .Values.homeAssistant.configuration.config | toYaml | nindent 4 }}
+    {{- .Values.homeAssistant.configuration.content | trimSuffix "\n" | nindent 4 }}
 {{- end }}

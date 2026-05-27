@@ -74,27 +74,11 @@ spec:
               subPath: configuration.yaml
               readOnly: true
             {{- end }}
-            {{- if .Values.homeAssistant.gitops.enabled }}
-            - name: gitops-sync-script
-              mountPath: /config/gitops/scripts/sync.sh
-              subPath: sync.sh
-              readOnly: true
-            - name: gitops-known-hosts
-              mountPath: /run/secrets/gitops/known_hosts
-              subPath: known_hosts
-              readOnly: true
+            {{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled }}
             - name: gitops-ssh-key
               mountPath: /run/secrets/gitops/ssh_key
-              subPath: {{ .Values.homeAssistant.gitops.ssh.secretKey }}
+              subPath: {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.secretKey }}
               readOnly: true
-            - name: gitops-ha-check
-              mountPath: /run/ha-check
-            {{- if .Values.homeAssistant.gitops.ssh.allowedSignersConfigMap }}
-            - name: gitops-allowed-signers
-              mountPath: /run/secrets/gitops/allowed_signers
-              subPath: allowed_signers
-              readOnly: true
-            {{- end }}
             {{- end }}
             {{- range .Values.secretVolumeMounts }}
             - name: {{ .name | default .secretName }}
