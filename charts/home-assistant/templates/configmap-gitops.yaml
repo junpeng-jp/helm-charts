@@ -1,0 +1,19 @@
+{{- if include "home-assistant.gitopsEnabled" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.configmapName.gitops" . }}
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  gitops_setup.sh: |-
+    {{- .Files.Get "scripts/gitops_setup.sh" | nindent 4 }}
+  git_sync.sh: |-
+    {{- .Files.Get "scripts/git_sync.sh" | nindent 4 }}
+  shell.yaml: |-
+    {{- .Files.Get "config/shell.yaml" | nindent 4 }}
+  script.yaml: |-
+    {{- .Files.Get "config/script.yaml" | nindent 4 }}
+  sensor.yaml: |-
+    {{- .Files.Get "config/sensor.yaml" | nindent 4 }}
+{{- end }}

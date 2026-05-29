@@ -1,0 +1,3 @@
+shell_command:
+  git_sync_branch: "sh /config/gitops/git_sync.sh {{ repo }} --branch={{ branch }}"
+  git_sync_tag: "sh /config/gitops/git_sync.sh {{ repo }} --tag={{ tag }}"

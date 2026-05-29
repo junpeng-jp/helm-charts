@@ -136,13 +136,21 @@ tests:
       homeAssistant.initContainer.tasks.gitops.enabled: true
       homeAssistant.initContainer.tasks.gitops.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
       homeAssistant.initContainer.tasks.gitops.ssh.secretName: ha-gitops-ssh
-      homeAssistant.initContainer.tasks.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
+      homeAssistant.initContainer.tasks.gitops.repo.name: ha-config
+      homeAssistant.initContainer.tasks.gitops.repo.url: "git@github.com:example/ha-config.git"
       persistence.enabled: false
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.initContainer.tasks.gitops.enabled requires persistence.enabled to be true"
+
+  - it: gitops with https URL passes validation without ssh settings
+    set:
+      homeAssistant.initContainer.tasks.gitops.enabled: true
+      homeAssistant.initContainer.tasks.gitops.repo.name: helm-charts
+      homeAssistant.initContainer.tasks.gitops.repo.url: "https://github.com/junpeng-jp/helm-charts.git"
+    asserts:
+      - hasDocuments:
+          count: 0
 
   - it: fails when gateway ingress is enabled but http port is absent
     set:

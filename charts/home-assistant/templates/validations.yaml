@@ -1,3 +1,41 @@
+# Field-level validation (required fields, type checks, minLength, enum constraints) is handled
+# by values.schema.json. This file validates only cross-field constraints and inter-feature
+# dependencies that JSON Schema cannot express.
+
+# nameOverride / fullnameOverride: must be valid DNS labels when provided
+{{- if .Values.nameOverride }}
+{{- if not (regexMatch `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` .Values.nameOverride) }}
+{{- fail (printf "nameOverride %q must be a valid DNS label (lowercase alphanumeric and hyphens, no leading/trailing hyphens)" .Values.nameOverride) }}
+{{- end }}
+{{- end }}
+{{- if .Values.fullnameOverride }}
+{{- if not (regexMatch `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` .Values.fullnameOverride) }}
+{{- fail (printf "fullnameOverride %q must be a valid DNS label (lowercase alphanumeric and hyphens, no leading/trailing hyphens)" .Values.fullnameOverride) }}
+{{- end }}
+{{- end }}
+
+# derived fullname: when fullnameOverride is not set, the computed name must fit in 63 characters
+{{- if not .Values.fullnameOverride }}
+{{- $fullname := include "home-assistant.fullname" . }}
+{{- if gt (len $fullname) 63 }}
+{{- fail (printf "derived resource name %q exceeds 63 characters; set fullnameOverride or shorten nameOverride" $fullname) }}
+{{- end }}
+{{- end }}
+
+# chart metadata: Chart.name and Chart.version must be valid and produce a helm.sh/chart label ≤ 63 characters
+{{- if not (regexMatch `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` .Chart.Name) }}
+{{- fail (printf "Chart.name %q must be a valid DNS label (lowercase alphanumeric and hyphens, no leading/trailing hyphens)" .Chart.Name) }}
+{{- end }}
+{{- if eq (len .Chart.Version) 0 }}
+{{- fail "Chart.version must not be empty" }}
+{{- end }}
+{{- if hasSuffix "-" .Chart.Version }}
+{{- fail (printf "Chart.version %q must not end with \"-\"" .Chart.Version) }}
+{{- end }}
+{{- if gt (len (printf "%s-%s" .Chart.Name .Chart.Version)) 63 }}
+{{- fail (printf "helm.sh/chart label value %q exceeds 63 characters; shorten Chart.name or Chart.version" (printf "%s-%s" .Chart.Name .Chart.Version)) }}
+{{- end }}
+
 # networking: each enabled service must have at least one enabled port
 {{- range $svcName := keys .Values.networking.service | sortAlpha }}
 {{- $svc := index $.Values.networking.service $svcName }}
@@ -5,7 +43,7 @@
 {{- $check := dict "hasPorts" false }}
 {{- range $portName := keys $svc.ports | sortAlpha }}
 {{- $port := index $svc.ports $portName }}
-{{- if ne $port.enabled false }}
+{{- if include "home-assistant.portEnabled" $port }}
 {{- $_ := set $check "hasPorts" true }}
 {{- end }}
 {{- end }}
@@ -23,7 +61,7 @@
 {{- fail (printf "%s requires networking.service.app to be enabled" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
 {{- end }}
 {{- $httpPort := index .Values.networking.service.app.ports "http" }}
-{{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (or (not $httpPort) (eq (get $httpPort "enabled") false)) }}
+{{- if and (or .Values.ingress.gateway.enabled .Values.ingress.traefik.enabled) (or (not $httpPort) (eq $httpPort.enabled false)) }}
 {{- fail (printf "%s requires networking.service.app.ports.http to be defined and enabled" (ternary "ingress.gateway" "ingress.traefik" .Values.ingress.gateway.enabled)) }}
 {{- end }}
 
@@ -84,7 +122,7 @@
 {{- if $svc.enabled }}
 {{- range $portName := keys $svc.ports | sortAlpha }}
 {{- $port := index $svc.ports $portName }}
-{{- if not (eq $port.enabled false) }}
+{{- if include "home-assistant.portEnabled" $port }}
 {{- $allPorts = append $allPorts $portName }}
 {{- end }}
 {{- end }}

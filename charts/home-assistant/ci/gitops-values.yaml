@@ -1,0 +1,17 @@
+global:
+  image:
+    tag: "2026.5"
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 1Gi
+
+homeAssistant:
+  initContainer:
+    tasks:
+      gitops:
+        enabled: true
+        repo:
+          name: helm-charts
+          url: "https://github.com/junpeng-jp/helm-charts.git"

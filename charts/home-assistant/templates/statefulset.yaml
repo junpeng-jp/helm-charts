@@ -33,16 +33,14 @@ spec:
         - name: {{ . }}
         {{- end }}
       {{- end }}
-      {{- $initContainers := include "home-assistant.initContainers" . | trim }}
-      {{- if $initContainers }}
+      {{- with include "home-assistant.initContainers" . | trim }}
       initContainers:
-        {{- $initContainers | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       containers:
         - name: home-assistant
           image: {{ include "home-assistant.image" . }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
-          # Security context omitted — home-assistant uses s6-overlay which must start as root.
           {{- with include "home-assistant.containerPorts" . | trim }}
           ports:
             {{- . | nindent 12 }}
@@ -74,12 +72,6 @@ spec:
               subPath: configuration.yaml
               readOnly: true
             {{- end }}
-            {{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled }}
-            - name: gitops-ssh-key
-              mountPath: /run/secrets/gitops/ssh_key
-              subPath: {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.secretKey }}
-              readOnly: true
-            {{- end }}
             {{- range .Values.secretVolumeMounts }}
             - name: {{ .name | default .secretName }}
               mountPath: /run/secrets/{{ .mountPath | default .secretName }}
@@ -92,10 +84,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- $volumes := include "home-assistant.volumes" . | trim }}
-      {{- if $volumes }}
+      {{- with include "home-assistant.volumes" . | trim }}
       volumes:
-        {{- $volumes | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       {{- with .Values.pod.nodeSelector }}
       nodeSelector:

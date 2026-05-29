@@ -1,22 +1,22 @@
 {{- define "home-assistant.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- default .Chart.Name .Values.nameOverride }}
 {{- end }}
 
 {{- define "home-assistant.fullname" -}}
 {{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- .Values.fullnameOverride }}
 {{- else }}
 {{- $name := default .Chart.Name .Values.nameOverride }}
 {{- if contains $name .Release.Name }}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- .Release.Name }}
 {{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-%s" .Release.Name $name }}
 {{- end }}
 {{- end }}
 {{- end }}
 
 {{- define "home-assistant.labels" -}}
-helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{ include "home-assistant.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
@@ -38,11 +38,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "home-assistant.renderImage" -}}
-{{- if .digest }}
-{{- printf "%s/%s@%s" .registry .repository .digest }}
-{{- else }}
-{{- printf "%s/%s:%s" .registry .repository .tag }}
-{{- end }}
+{{- $ref := printf "%s/%s" .registry .repository | trimPrefix "/" | trimSuffix "/" -}}
+{{- if .digest -}}
+{{- printf "%s@%s" $ref .digest -}}
+{{- else if .tag -}}
+{{- printf "%s:%s" $ref .tag -}}
+{{- else -}}
+{{- $ref -}}
+{{- end -}}
 {{- end }}
 
 {{- define "home-assistant.image" -}}
@@ -53,93 +56,124 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- include "home-assistant.renderImage" .Values.homeAssistant.initContainer.image }}
 {{- end }}
 
-{{- /* Returns "true" or "" (empty string). Use with include in if-predicates: {{- if include "home-assistant.bootstrapEnabled" . }} */ -}}
-{{- define "home-assistant.bootstrapEnabled" -}}
-{{- if or .Values.homeAssistant.initContainer.tasks.setupHACS.enabled
-         .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled -}}
-true
-{{- end -}}
-{{- end -}}
-
 {{- define "home-assistant.testImage" -}}
 {{- include "home-assistant.renderImage" .Values.global.testImage }}
 {{- end }}
 
-{{- define "home-assistant.initContainers" -}}
-{{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled }}
+{{- define "home-assistant.portEnabled" -}}
+{{- if ne .enabled false }}true{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.bootstrapEnabled" -}}
+{{- $hacsEnabled := .Values.homeAssistant.initContainer.tasks.setupHACS.enabled -}}
+{{- $secretsEnabled := .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled -}}
+{{- if or $hacsEnabled $secretsEnabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.gitopsEnabled" -}}
+{{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.isGitOpsSSH" -}}
+{{- $url := .Values.homeAssistant.initContainer.tasks.gitops.repo.url | default "" -}}
+{{- if or (hasPrefix "git@" $url) (hasPrefix "ssh://" $url) -}}true{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.initContainer.securityContext" -}}
+runAsUser: 0
+readOnlyRootFilesystem: false
+allowPrivilegeEscalation: false
+capabilities:
+  drop: [ALL]
+{{- end -}}
+
+{{- define "home-assistant.initContainer.baseFields" -}}
+image: {{ include "home-assistant.initContainer.image" . }}
+imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
+securityContext:
+  {{- include "home-assistant.initContainer.securityContext" . | nindent 2 }}
+{{- end -}}
+
+{{- define "home-assistant.configmapName.configuration" -}}
+{{- include "home-assistant.fullname" . }}-configuration
+{{- end -}}
+
+{{- define "home-assistant.configmapName.initScripts" -}}
+{{- include "home-assistant.fullname" . }}-init-scripts
+{{- end -}}
+
+{{- define "home-assistant.configmapName.gitops" -}}
+{{- include "home-assistant.fullname" . }}-gitops
+{{- end -}}
+
+{{- define "home-assistant.initContainer.gitopsSetup" -}}
+{{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops -}}
+{{- $isGitOpsSSH := include "home-assistant.isGitOpsSSH" . -}}
+{{- $gitopsMountPath := "/run/gitops-configmap" -}}
+{{- if $gitops.enabled }}
 - name: gitops-setup
-  image: {{ include "home-assistant.initContainer.image" . }}
-  imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
-  # Runs as root; apk install requires a writable root filesystem.
-  securityContext:
-    runAsUser: 0
-    readOnlyRootFilesystem: false
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop: [ALL]
+  {{- include "home-assistant.initContainer.baseFields" . | nindent 2 }}
   command:
     - sh
-    - -c
-    - |
-      set -e
-      apk add --no-cache git >/dev/null
-      rm -rf /config/.gitops
-      mkdir -p /config/.gitops/allowed-signers
-      printf '%b' {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.knownHosts | quote }} > /config/.gitops/known_hosts
-      {
-        printf '%s\n' 'Host *'
-        printf '%s\n' '  IdentityFile /run/secrets/gitops/ssh_key'
-        printf '%s\n' '  UserKnownHostsFile /config/.gitops/known_hosts'
-        printf '%s\n' '  StrictHostKeyChecking yes'
-        printf '%s\n' '  IdentitiesOnly yes'
-      } > /config/.gitops/ssh_config
-      {{- range .Values.homeAssistant.initContainer.tasks.gitops.repos }}
-      git init /config/gitops/{{ .name }}
-      git -C /config/gitops/{{ .name }} remote set-url origin {{ .url | quote }} 2>/dev/null || \
-        git -C /config/gitops/{{ .name }} remote add origin {{ .url | quote }}
-      git -C /config/gitops/{{ .name }} config core.sshCommand 'ssh -F /config/.gitops/ssh_config'
-      {{- if .allowedSigners }}
-      printf '%b' {{ .allowedSigners | quote }} > /config/.gitops/allowed-signers/{{ .name }}
-      git -C /config/gitops/{{ .name }} config gpg.ssh.allowedSignersFile /config/.gitops/allowed-signers/{{ .name }}
-      {{- end }}
-      {{- end }}
+    - {{ $gitopsMountPath }}/gitops_setup.sh
+  env:
+    - name: REPO_NAME
+      value: {{ $gitops.repo.name | quote }}
+    - name: REPO_URL
+      value: {{ $gitops.repo.url | quote }}
+    {{- if $isGitOpsSSH }}
+    - name: KNOWN_HOSTS
+      value: {{ $gitops.ssh.knownHosts | quote }}
+    {{- end }}
+    {{- with $gitops.repo.allowedSigners }}
+    - name: ALLOWED_SIGNERS
+      value: {{ . | quote }}
+    {{- end }}
   {{- with .Values.homeAssistant.initContainer.resources }}
   resources:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   volumeMounts:
-    {{- /* config volume always present: gitops.enabled → persistence.enabled (validated) */}}
     - name: config
       mountPath: /config
-{{- end }}
+    - name: gitops-configmap
+      mountPath: {{ $gitopsMountPath }}
+      readOnly: true
+    {{- if $isGitOpsSSH }}
+    - name: gitops-ssh-key
+      mountPath: /run/secrets/gitops/ssh_key
+      subPath: {{ $gitops.ssh.secretKey }}
+      readOnly: true
+    {{- end }}
+{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.initContainer.bootstrap" -}}
+{{- $hacs := .Values.homeAssistant.initContainer.tasks.setupHACS -}}
+{{- $secrets := .Values.homeAssistant.initContainer.tasks.setupSecretsYaml -}}
+{{- $initScriptsMountPath := "/run/init-scripts" -}}
 {{- if include "home-assistant.bootstrapEnabled" . }}
 - name: bootstrap
-  image: {{ include "home-assistant.initContainer.image" . }}
-  imagePullPolicy: {{ .Values.homeAssistant.initContainer.image.pullPolicy }}
-  # Runs as root; apk install (HACS) requires a writable root filesystem.
-  securityContext:
-    runAsUser: 0
-    readOnlyRootFilesystem: false
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop: [ALL]
-  command: [sh, /run/init-scripts/bootstrap.sh]
+  {{- include "home-assistant.initContainer.baseFields" . | nindent 2 }}
+  command:
+    - sh
+    - {{ $initScriptsMountPath }}/bootstrap.sh
   env:
-    {{- if .Values.homeAssistant.initContainer.tasks.setupHACS.enabled }}
     - name: HACS_ENABLED
-      value: "true"
+      value: {{ $hacs.enabled | quote }}
+    {{- if $hacs.enabled }}
     - name: HACS_VERSION
-      value: {{ .Values.homeAssistant.initContainer.tasks.setupHACS.version | quote }}
-    {{- if .Values.homeAssistant.initContainer.tasks.setupHACS.sha256 }}
+      value: {{ $hacs.version | quote }}
+    {{- if $hacs.sha256 }}
     - name: HACS_SHA256
-      value: {{ .Values.homeAssistant.initContainer.tasks.setupHACS.sha256 | quote }}
+      value: {{ $hacs.sha256 | quote }}
     {{- end }}
     {{- end }}
-    {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
     - name: SECRETS_ENABLED
-      value: "true"
+      value: {{ $secrets.enabled | quote }}
+    {{- if $secrets.enabled }}
     - name: SECRETS_DIR
-      value: "/run/secrets/{{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}"
+      value: "/run/secrets/{{ $secrets.secretName }}"
     {{- end }}
   {{- with .Values.homeAssistant.initContainer.resources }}
   resources:
@@ -149,28 +183,23 @@ true
     - name: config
       mountPath: /config
     - name: init-scripts
-      mountPath: /run/init-scripts
+      mountPath: {{ $initScriptsMountPath }}
       readOnly: true
-    {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
-    - name: {{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}
-      mountPath: /run/secrets/{{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}
+    {{- if $secrets.enabled }}
+    - name: {{ $secrets.secretName }}
+      mountPath: /run/secrets/{{ $secrets.secretName }}
       readOnly: true
     {{- end }}
-{{- end }}
-{{- with .Values.initContainers }}
-{{ toYaml . -}}
-{{- end }}
+{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.initContainer.checkConfig" -}}
 {{- if and .Values.homeAssistant.configuration.enabled .Values.homeAssistant.configuration.checkConfig.enabled }}
 - name: check-config
   image: {{ include "home-assistant.image" . }}
   imagePullPolicy: {{ .Values.global.image.pullPolicy }}
-  # Runs as root; hass --script check_config writes temporary files under /config.
   securityContext:
-    runAsUser: 0
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: false
-    capabilities:
-      drop: [ALL]
+    {{- include "home-assistant.initContainer.securityContext" . | nindent 4 }}
   command:
     - hass
     - --script
@@ -188,8 +217,17 @@ true
       mountPath: /config/configuration.yaml
       subPath: configuration.yaml
       readOnly: true
+{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.initContainers" -}}
+{{- include "home-assistant.initContainer.gitopsSetup" . }}
+{{- include "home-assistant.initContainer.bootstrap" . }}
+{{- with .Values.initContainers }}
+{{- toYaml . | nindent 0 }}
 {{- end }}
-{{- end }}
+{{- include "home-assistant.initContainer.checkConfig" . }}
+{{- end -}}
 
 {{- define "home-assistant.volumes" -}}
 {{- if .Values.persistence.existingClaim }}
@@ -200,19 +238,27 @@ true
 {{- if .Values.homeAssistant.configuration.enabled }}
 - name: ha-configuration
   configMap:
-    name: {{ include "home-assistant.fullname" . }}-configuration
+    name: {{ include "home-assistant.configmapName.configuration" . }}
 {{- end }}
 {{- if include "home-assistant.bootstrapEnabled" . }}
 - name: init-scripts
   configMap:
-    name: {{ include "home-assistant.fullname" . }}-init-scripts
+    name: {{ include "home-assistant.configmapName.initScripts" . }}
     defaultMode: 0755
 {{- end }}
-{{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled }}
+{{- if include "home-assistant.gitopsEnabled" . }}
+{{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops -}}
+{{- $isGitOpsSSH := include "home-assistant.isGitOpsSSH" . }}
+- name: gitops-configmap
+  configMap:
+    name: {{ include "home-assistant.configmapName.gitops" . }}
+    defaultMode: 0755
+{{- if $isGitOpsSSH }}
 - name: gitops-ssh-key
   secret:
-    secretName: {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.secretName }}
+    secretName: {{ $gitops.ssh.secretName }}
     defaultMode: 0400
+{{- end }}
 {{- end }}
 {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
 - name: {{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}
@@ -225,21 +271,20 @@ true
     secretName: {{ .secretName }}
 {{- end }}
 {{- with .Values.extraVolumes }}
-{{ toYaml . -}}
+{{- toYaml . | nindent 0 }}
 {{- end }}
-{{- end }}
+{{- end -}}
 
-{{- /* Emits a YAML list of containerPort entries for all enabled services and ports. */ -}}
 {{- define "home-assistant.containerPorts" -}}
 {{- range $svcName := keys .Values.networking.service | sortAlpha -}}
 {{- $svc := index $.Values.networking.service $svcName -}}
 {{- if $svc.enabled -}}
 {{- range $portName := keys $svc.ports | sortAlpha -}}
 {{- $port := index $svc.ports $portName -}}
-{{- if ne $port.enabled false }}
+{{- if include "home-assistant.portEnabled" $port }}
 - name: {{ $portName }}
   containerPort: {{ $port.port }}
-  protocol: {{ $port.protocol }}
+  protocol: {{ $port.protocol | default "TCP" }}
 {{- end -}}
 {{- end -}}
 {{- end -}}

@@ -32,8 +32,8 @@
         }
       }
     },
-    "nameOverride":     { "type": "string" },
-    "fullnameOverride": { "type": "string" },
+    "nameOverride":     { "type": "string", "minLength": 1, "maxLength": 63 },
+    "fullnameOverride": { "type": "string", "minLength": 1, "maxLength": 63 },
     "replicaCount":          { "type": "integer", "minimum": 1 },
     "podManagementPolicy":   { "type": "string", "enum": ["OrderedReady", "Parallel"] },
     "updateStrategy": {
@@ -368,17 +368,13 @@
                   "additionalProperties": false,
                   "properties": {
                     "enabled": { "type": "boolean" },
-                    "repos": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": ["name", "url"],
-                        "additionalProperties": false,
-                        "properties": {
-                          "name":           { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" },
-                          "url":            { "type": "string" },
-                          "allowedSigners": { "type": "string" }
-                        }
+                    "repo": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name":           { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" },
+                        "url":            { "type": "string" },
+                        "allowedSigners": { "type": "string" }
                       }
                     },
                     "ssh": {
@@ -386,25 +382,52 @@
                       "additionalProperties": false,
                       "properties": {
                         "secretName":  { "type": "string" },
-                        "secretKey":   { "type": "string" },
+                        "secretKey":   { "type": "string", "minLength": 1 },
                         "knownHosts":  { "type": "string" }
                       }
                     }
                   },
-                  "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
-                  "then": {
-                    "required": ["repos", "ssh"],
-                    "properties": {
-                      "repos": { "minItems": 1 },
-                      "ssh": {
-                        "required": ["knownHosts", "secretName"],
+                  "allOf": [
+                    {
+                      "if":   { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+                      "then": {
+                        "required": ["repo"],
                         "properties": {
-                          "knownHosts": { "minLength": 1 },
-                          "secretName": { "minLength": 1 }
+                          "repo": {
+                            "required": ["name", "url"],
+                            "properties": {
+                              "name": { "minLength": 1 },
+                              "url":  { "minLength": 1 }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "enabled": { "const": true },
+                          "repo": {
+                            "required": ["url"],
+                            "properties": { "url": { "pattern": "^(git@|ssh://)" } }
+                          }
+                        },
+                        "required": ["enabled", "repo"]
+                      },
+                      "then": {
+                        "required": ["ssh"],
+                        "properties": {
+                          "ssh": {
+                            "required": ["knownHosts", "secretName"],
+                            "properties": {
+                              "knownHosts": { "minLength": 1 },
+                              "secretName": { "minLength": 1 }
+                            }
+                          }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }

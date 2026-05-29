@@ -1,81 +1,112 @@
 suite: GitOps
 templates:
   - templates/statefulset.yaml
+  - templates/configmap-gitops.yaml
 tests:
-  - it: gitops-setup init container runs git init and configures repos
+  - it: gitops-setup init container is configured with correct command and repo env vars
     template: templates/statefulset.yaml
     set:
       homeAssistant.initContainer.tasks.gitops.enabled: true
       homeAssistant.initContainer.tasks.gitops.ssh.secretName: ha-gitops-ssh
       homeAssistant.initContainer.tasks.gitops.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
-      homeAssistant.initContainer.tasks.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
-        - name: ha-blueprints
-          url: "git@github.com:example/ha-blueprints.git"
+      homeAssistant.initContainer.tasks.gitops.repo.name: ha-config
+      homeAssistant.initContainer.tasks.gitops.repo.url: "git@github.com:example/ha-config.git"
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
           value: gitops-setup
-      - notExists:
+      - equal:
+          path: spec.template.spec.initContainers[0].command
+          value: [sh, /run/gitops-configmap/gitops_setup.sh]
+      - contains:
           path: spec.template.spec.initContainers[0].env
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "git init /config/gitops/ha-config"
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "git init /config/gitops/ha-blueprints"
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "git@github.com:example/ha-config.git"
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "git@github.com:example/ha-blueprints.git"
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "core.sshCommand"
+          content:
+            name: REPO_NAME
+            value: ha-config
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: REPO_URL
+            value: "git@github.com:example/ha-config.git"
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: KNOWN_HOSTS
+            value: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
 
-  - it: gitops-setup wipes /config/.gitops on each start
-    template: templates/statefulset.yaml
+  - it: gitops_setup.sh selectively wipes git config files and preserves the state directory
+    template: templates/configmap-gitops.yaml
     values:
       - fixtures/gitops-minimal.yaml
     asserts:
       - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "rm -rf /config/.gitops"
+          path: data["gitops_setup.sh"]
+          pattern: "rm -f /config/.gitops/known_hosts"
       - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
+          path: data["gitops_setup.sh"]
+          pattern: "rm -rf /config/.gitops/allowed-signers"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
           pattern: "mkdir -p /config/.gitops/allowed-signers"
 
-  - it: gitops-setup writes ssh_config with hardened settings
-    template: templates/statefulset.yaml
+  - it: gitops_setup.sh writes repo URL and name to state on every pod start
+    template: templates/configmap-gitops.yaml
     values:
       - fixtures/gitops-minimal.yaml
     asserts:
       - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
+          path: data["gitops_setup.sh"]
+          pattern: "/config/.gitops/state/gitops_repo_url"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "/config/.gitops/state/gitops_repo_name"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "/config/.gitops/state/gitops_sync_ref"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "/config/.gitops/state/gitops_last_sync"
+
+  - it: git_sync.sh writes sync_ref and last_sync to state after each successful sync
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - matchRegex:
+          path: data["git_sync.sh"]
+          pattern: "/config/.gitops/state/gitops_sync_ref"
+      - matchRegex:
+          path: data["git_sync.sh"]
+          pattern: "/config/.gitops/state/gitops_last_sync"
+
+  - it: gitops_setup.sh writes ssh_config with hardened settings for SSH repos
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - matchRegex:
+          path: data["gitops_setup.sh"]
           pattern: "StrictHostKeyChecking yes"
       - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
+          path: data["gitops_setup.sh"]
           pattern: "IdentitiesOnly yes"
       - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
+          path: data["gitops_setup.sh"]
           pattern: "IdentityFile /run/secrets/gitops/ssh_key"
       - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
+          path: data["gitops_setup.sh"]
           pattern: "UserKnownHostsFile /config/.gitops/known_hosts"
 
-  - it: gitops-setup writes known_hosts from inline values
+  - it: KNOWN_HOSTS env var carries the knownHosts value for SSH repos
     template: templates/statefulset.yaml
     values:
       - fixtures/gitops-minimal.yaml
     asserts:
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "/config/.gitops/known_hosts"
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: KNOWN_HOSTS
+            value: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
 
   - it: SSH volume and mount are configured correctly when gitops is enabled
     template: templates/statefulset.yaml
@@ -90,12 +121,16 @@ tests:
               secretName: ha-gitops-ssh
               defaultMode: 256
       - contains:
-          path: spec.template.spec.containers[0].volumeMounts
+          path: spec.template.spec.initContainers[0].volumeMounts
           content:
             name: gitops-ssh-key
             mountPath: /run/secrets/gitops/ssh_key
             subPath: id_ed25519
             readOnly: true
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
       - notContains:
           path: spec.template.spec.volumes
           content:
@@ -129,41 +164,239 @@ tests:
       homeAssistant.initContainer.tasks.gitops.ssh.secretKey: id_rsa
     asserts:
       - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+            mountPath: /run/secrets/gitops/ssh_key
+            subPath: id_rsa
+            readOnly: true
+      - notContains:
           path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+
+  - it: gitops-setup mounts the SSH key for use during ls-remote connectivity probe
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+            mountPath: /run/secrets/gitops/ssh_key
+            subPath: id_ed25519
+            readOnly: true
+
+  - it: gitops-setup mounts SSH key using custom secretKey as subPath
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    set:
+      homeAssistant.initContainer.tasks.gitops.ssh.secretKey: id_rsa
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
           content:
             name: gitops-ssh-key
             mountPath: /run/secrets/gitops/ssh_key
             subPath: id_rsa
             readOnly: true
 
-  - it: writes allowed-signers file and sets gpg.ssh.allowedSignersFile when allowedSigners non-empty
+  - it: gitops_setup.sh runs git init and validates connectivity with ls-remote
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "git init"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "git ls-remote origin HEAD"
+
+  - it: ALLOWED_SIGNERS env var is set when allowedSigners is non-empty
     template: templates/statefulset.yaml
     values:
       - fixtures/gitops-minimal.yaml
     set:
-      homeAssistant.initContainer.tasks.gitops.repos:
-        - name: ha-config
-          url: "git@github.com:example/ha-config.git"
-          allowedSigners: "user@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
+      homeAssistant.initContainer.tasks.gitops.repo.allowedSigners: "user@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
     asserts:
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "/config/.gitops/allowed-signers/ha-config"
-      - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "gpg.ssh.allowedSignersFile"
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: ALLOWED_SIGNERS
+            value: "user@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
 
-  - it: does not write allowed-signers or set gpg.ssh.allowedSignersFile when allowedSigners is empty
+  - it: ALLOWED_SIGNERS env var is absent when allowedSigners is not configured
     template: templates/statefulset.yaml
     values:
       - fixtures/gitops-minimal.yaml
     asserts:
+      - notContains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: ALLOWED_SIGNERS
+
+  - it: gitops_setup.sh copies git_sync.sh and all three package YAML files
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
       - matchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "git init /config/gitops/ha-config"
+          path: data["gitops_setup.sh"]
+          pattern: "cp /run/gitops-configmap/git_sync.sh /config/gitops/git_sync.sh"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "shell.yaml"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "script.yaml"
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "sensor.yaml"
+
+  - it: gitops-setup mounts gitops-configmap ConfigMap
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: gitops-configmap
+            mountPath: /run/gitops-configmap
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-configmap
+            configMap:
+              name: RELEASE-NAME-home-assistant-gitops
+              defaultMode: 493
+
+  - it: gitops_setup.sh installs git but not rsync
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - matchRegex:
+          path: data["gitops_setup.sh"]
+          pattern: "apk add --no-cache git"
       - notMatchRegex:
-          path: spec.template.spec.initContainers[0].command[2]
-          pattern: "gpg.ssh.allowedSignersFile"
+          path: data["gitops_setup.sh"]
+          pattern: "rsync"
+
+  - it: gitops-configmap ConfigMap is rendered when gitops is enabled
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant-gitops
+      - exists:
+          path: data["gitops_setup.sh"]
+      - matchRegex:
+          path: data["git_sync.sh"]
+          pattern: "--branch="
+      - matchRegex:
+          path: data["git_sync.sh"]
+          pattern: "--tag="
+      - matchRegex:
+          path: data["shell.yaml"]
+          pattern: "git_sync_branch"
+      - matchRegex:
+          path: data["shell.yaml"]
+          pattern: "git_sync_tag"
+      - matchRegex:
+          path: data["script.yaml"]
+          pattern: "gitops_sync"
+      - matchRegex:
+          path: data["script.yaml"]
+          pattern: "gitops_webhook_sync"
+      - matchRegex:
+          path: data["script.yaml"]
+          pattern: "sensor.gitops_repo_name"
+      - matchRegex:
+          path: data["script.yaml"]
+          pattern: "homeassistant.update_entity"
+      - matchRegex:
+          path: data["sensor.yaml"]
+          pattern: "command_line"
+      - matchRegex:
+          path: data["sensor.yaml"]
+          pattern: "gitops_repo_url"
+
+  - it: shell.yaml accepts repo as a template variable from the caller
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - matchRegex:
+          path: data["shell.yaml"]
+          pattern: "git_sync.sh {{ repo }}"
+      - matchRegex:
+          path: data["shell.yaml"]
+          pattern: "--branch="
+      - matchRegex:
+          path: data["shell.yaml"]
+          pattern: "--tag="
+
+  - it: sensor.yaml defines command_line sensors for all four gitops state values
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - matchRegex:
+          path: data["sensor.yaml"]
+          pattern: "gitops_repo_name"
+      - matchRegex:
+          path: data["sensor.yaml"]
+          pattern: "gitops_repo_url"
+      - matchRegex:
+          path: data["sensor.yaml"]
+          pattern: "gitops_sync_ref"
+      - matchRegex:
+          path: data["sensor.yaml"]
+          pattern: "gitops_last_sync"
+
+  - it: gitops-setup and bootstrap both render when gitops and a bootstrap task are enabled together
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: gitops-setup
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: bootstrap
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-configmap
+            configMap:
+              name: RELEASE-NAME-home-assistant-gitops
+              defaultMode: 493
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: init-scripts
+            configMap:
+              name: RELEASE-NAME-home-assistant-init-scripts
+              defaultMode: 493
+
+  - it: gitops-configmap ConfigMap is absent when gitops is disabled
+    template: templates/configmap-gitops.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
 
   - it: gitops volumes and init containers are absent when gitops is disabled
     template: templates/statefulset.yaml
@@ -172,3 +405,53 @@ tests:
           path: spec.template.spec.initContainers
       - notExists:
           path: spec.template.spec.volumes
+
+  - it: https URL does not set KNOWN_HOSTS env var on the init container
+    template: templates/statefulset.yaml
+    set:
+      homeAssistant.initContainer.tasks.gitops.enabled: true
+      homeAssistant.initContainer.tasks.gitops.repo.name: helm-charts
+      homeAssistant.initContainer.tasks.gitops.repo.url: "https://github.com/junpeng-jp/helm-charts.git"
+    asserts:
+      - notContains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: KNOWN_HOSTS
+
+  - it: https URL omits gitops-ssh-key volume and all its mounts
+    template: templates/statefulset.yaml
+    set:
+      homeAssistant.initContainer.tasks.gitops.enabled: true
+      homeAssistant.initContainer.tasks.gitops.repo.name: helm-charts
+      homeAssistant.initContainer.tasks.gitops.repo.url: "https://github.com/junpeng-jp/helm-charts.git"
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-ssh-key
+      - notContains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+
+  - it: https URL configures REPO_NAME and REPO_URL env vars on the init container
+    template: templates/statefulset.yaml
+    set:
+      homeAssistant.initContainer.tasks.gitops.enabled: true
+      homeAssistant.initContainer.tasks.gitops.repo.name: helm-charts
+      homeAssistant.initContainer.tasks.gitops.repo.url: "https://github.com/junpeng-jp/helm-charts.git"
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: REPO_NAME
+            value: helm-charts
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: REPO_URL
+            value: "https://github.com/junpeng-jp/helm-charts.git"

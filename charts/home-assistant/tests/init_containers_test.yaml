@@ -64,6 +64,13 @@ tests:
           value:
             - name: config
               mountPath: /config
+            - name: gitops-configmap
+              mountPath: /run/gitops-configmap
+              readOnly: true
+            - name: gitops-ssh-key
+              mountPath: /run/secrets/gitops/ssh_key
+              subPath: id_ed25519
+              readOnly: true
 
   - it: bootstrap has least-privilege security context with writable root for apk
     set:

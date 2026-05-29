@@ -18,8 +18,8 @@ global:
     digest: ""
     pullPolicy: IfNotPresent
 
-nameOverride: ""
-fullnameOverride: ""
+# nameOverride: home-assistant
+# fullnameOverride: home-assistant
 # Keep at 1 when using ReadWriteOnce storage. Multiple replicas require ReadWriteMany.
 replicaCount: 1
 podManagementPolicy: OrderedReady
@@ -198,29 +198,43 @@ homeAssistant:
 
       # Sets up SSH credentials and git scaffolding for gitops-managed configuration.
       # Requires persistence.enabled. The init container writes all non-secret git config
-      # (ssh_config, known_hosts, per-repo allowed_signers) to /config/.gitops/ on the PVC
+      # (ssh_config, known_hosts, allowed_signers) to /config/.gitops/ on the PVC
       # on every pod start, wiping and recreating the directory to remove stale files.
       # Only the SSH private key is mounted from a Kubernetes Secret.
+      #
+      # The init container also copies three Home Assistant package files
+      # (shell.yaml, script.yaml, sensor.yaml) to /config/gitops/packages/.
+      # These files are NOT under /config/packages/ and are therefore not loaded by
+      # the default '!include_dir_named packages/' directive. To activate the gitops
+      # sync commands and sensors in Home Assistant, include the directory explicitly
+      # in your configuration.yaml:
+      #
+      #   homeassistant:
+      #     packages:
+      #       gitops: !include_dir_named gitops/packages/
       gitops:
         enabled: false
 
-        # Git repositories to initialise. The init container runs 'git init', registers the
-        # remote URL, and sets core.sshCommand for each repo. Required when enabled.
-        repos: []
-        # - name: ha-config
-        #   url: git@github.com:your-org/ha-config.git
-        #   allowedSigners: |      # optional: inline SSH public keys trusted to sign commits/tags
-        #     user@example.com ssh-ed25519 AAAAC3...
+        # Single git repository to initialise. The init container runs 'git init', registers
+        # the remote URL, and sets core.sshCommand. Required when enabled.
+        repo: {}
+        # name: ha-config        # required: repo identifier (alphanumeric, hyphens, underscores)
+        # url: git@github.com:your-org/ha-config.git  # required: git remote URL
+        # allowedSigners: |      # optional: inline SSH public keys trusted to sign commits/tags
+        #   user@example.com ssh-ed25519 AAAAC3...
 
         ssh:
-          # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
+          # SSH credentials — required only when repo.url uses the git@ or ssh:// scheme.
+          # Not needed for https:// URLs.
+
+          # Name of a Kubernetes Secret containing the SSH deploy key.
           # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
           secretName: ""
 
           # Key within the Secret that holds the private key. Defaults to 'id_ed25519'.
           secretKey: "id_ed25519"
 
-          # Raw known_hosts content for verifying the git host's identity. Required when enabled.
+          # Raw known_hosts content for verifying the git host's identity.
           # Obtain with: ssh-keyscan <hostname>
           knownHosts: ""
 
