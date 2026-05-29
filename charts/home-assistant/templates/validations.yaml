@@ -7,18 +7,6 @@
 # Naming
 # ------------------------------------------------------------
 
-# nameOverride / fullnameOverride: must be valid DNS labels when provided
-{{- if .Values.nameOverride }}
-{{- if not (regexMatch `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` .Values.nameOverride) }}
-{{- fail (printf "nameOverride %q must be a valid DNS label (lowercase alphanumeric and hyphens, no leading/trailing hyphens)" .Values.nameOverride) }}
-{{- end }}
-{{- end }}
-{{- if .Values.fullnameOverride }}
-{{- if not (regexMatch `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` .Values.fullnameOverride) }}
-{{- fail (printf "fullnameOverride %q must be a valid DNS label (lowercase alphanumeric and hyphens, no leading/trailing hyphens)" .Values.fullnameOverride) }}
-{{- end }}
-{{- end }}
-
 # derived fullname: when fullnameOverride is not set, the computed name must fit in 63 characters
 {{- if not .Values.fullnameOverride }}
 {{- $fullname := include "home-assistant.fullname" . }}

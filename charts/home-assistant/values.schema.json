@@ -32,8 +32,8 @@
         }
       }
     },
-    "nameOverride":     { "type": "string", "minLength": 1, "maxLength": 63 },
-    "fullnameOverride": { "type": "string", "minLength": 1, "maxLength": 63 },
+    "nameOverride":     { "type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" },
+    "fullnameOverride": { "type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" },
     "replicaCount":          { "type": "integer", "minimum": 1 },
     "podManagementPolicy":   { "type": "string", "enum": ["OrderedReady", "Parallel"] },
     "updateStrategy": {

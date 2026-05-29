@@ -2,6 +2,7 @@ suite: GitOps
 templates:
   - templates/statefulset.yaml
   - templates/configmap-gitops.yaml
+  - templates/configmap-gitops-signers.yaml
 
 tests:
   - it: gitops ConfigMap is rendered when gitops is enabled
@@ -108,22 +109,60 @@ tests:
           path: data.knownHosts
           value: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
 
-  - it: allowed-signers is present in ConfigMap data when configured on the repo
-    template: templates/configmap-gitops.yaml
+  - it: gitops-signers ConfigMap is rendered with repo name as key when allowedSigners is configured
+    template: templates/configmap-gitops-signers.yaml
     values:
       - fixtures/gitops-with-allowed-signers.yaml
     asserts:
+      - hasDocuments:
+          count: 1
       - equal:
-          path: data["allowed-signers-ha-config"]
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant-gitops-signers
+      - equal:
+          path: data["ha-config"]
           value: "user@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
 
-  - it: allowed-signers is absent from ConfigMap when not configured on the repo
-    template: templates/configmap-gitops.yaml
+  - it: gitops-signers ConfigMap is absent when no repos have allowedSigners
+    template: templates/configmap-gitops-signers.yaml
     values:
       - fixtures/gitops-minimal.yaml
     asserts:
-      - notExists:
-          path: data["allowed-signers-ha-config"]
+      - hasDocuments:
+          count: 0
+
+  - it: gitops-init mounts the gitops-signers ConfigMap when allowedSigners are configured
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-with-allowed-signers.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: gitops-signers-configmap
+            mountPath: /run/gitops-signers
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-signers-configmap
+            configMap:
+              name: RELEASE-NAME-home-assistant-gitops-signers
+              defaultMode: 420
+
+  - it: gitops-signers volume and mount are absent when no repos have allowedSigners
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-minimal.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: gitops-signers-configmap
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-signers-configmap
 
   - it: gitops-init mounts the gitops-configmap ConfigMap
     template: templates/statefulset.yaml

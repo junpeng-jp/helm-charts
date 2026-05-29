@@ -12,15 +12,14 @@ mkdir -p "${GITOPS_BASE}/run/allowed-signers" \
 cp "$SCRIPT_SRC" "${GITOPS_BASE}/run/bin/gitops"
 chmod +x "${GITOPS_BASE}/run/bin/gitops"
 
-for _as in /run/gitops/allowed-signers-*; do
+for _as in /run/gitops-signers/*; do
   [ -f "$_as" ] || continue
-  _name="${_as#/run/gitops/allowed-signers-}"
-  cp "$_as" "${GITOPS_BASE}/run/allowed-signers/${_name}"
+  cp "$_as" "${GITOPS_BASE}/run/allowed-signers/${_as##*/}"
 done
 
-_KH="/run/gitops/knownHosts"
-if [ -f "$_KH" ]; then
-  cp "$_KH" "${GITOPS_BASE}/run/known_hosts"
+_KNOWN_HOSTS="/run/gitops/knownHosts"
+if [ -f "$_KNOWN_HOSTS" ]; then
+  cp "$_KNOWN_HOSTS" "${GITOPS_BASE}/run/known_hosts"
   cp /run/gitops/ssh-repos "${GITOPS_BASE}/run/ssh-repos"
   {
     printf 'Host *\n'

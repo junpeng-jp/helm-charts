@@ -111,6 +111,20 @@ securityContext:
 {{- include "home-assistant.fullname" . }}-gitops
 {{- end -}}
 
+{{- define "home-assistant.gitopsSignersEnabled" -}}
+{{- $found := dict -}}
+{{- range .Values.homeAssistant.initContainer.tasks.gitops.repos -}}
+  {{- if .allowedSigners -}}
+    {{- $_ := set $found "v" true -}}
+  {{- end -}}
+{{- end -}}
+{{- if $found.v -}}true{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.configmapName.gitopsSigners" -}}
+{{- include "home-assistant.fullname" . }}-gitops-signers
+{{- end -}}
+
 {{- define "home-assistant.initContainer.gitopsInit" -}}
 {{- if include "home-assistant.gitopsEnabled" . -}}
 {{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops -}}
@@ -134,6 +148,11 @@ securityContext:
     - name: gitops-ssh-key
       mountPath: /run/secrets/gitops/ssh_key
       subPath: {{ $gitops.ssh.secretKey }}
+      readOnly: true
+    {{- end }}
+    {{- if include "home-assistant.gitopsSignersEnabled" . }}
+    - name: gitops-signers-configmap
+      mountPath: /run/gitops-signers
       readOnly: true
     {{- end }}
 {{- end -}}
@@ -249,6 +268,12 @@ securityContext:
   secret:
     secretName: {{ $gitops.ssh.secretName }}
     defaultMode: 0400
+{{- end }}
+{{- if include "home-assistant.gitopsSignersEnabled" . }}
+- name: gitops-signers-configmap
+  configMap:
+    name: {{ include "home-assistant.configmapName.gitopsSigners" . }}
+    defaultMode: 0644
 {{- end }}
 {{- end }}
 {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}

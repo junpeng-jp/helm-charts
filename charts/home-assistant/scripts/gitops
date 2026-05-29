@@ -9,13 +9,14 @@ _bare_dir()      { printf '%s' "${GITOPS_REPOS_BASE}/${1}.git"; }
 _worktrees_dir() { printf '%s' "${GITOPS_REPOS_BASE}/${1}"; }
 
 # Parses [--branch=X|--tag=X] from "$@".
-# Sets _COMMIT, _REF_NAME, _SANITIZED as side-effects. Requires _BARE to be set.
+# Requires _BARE to be set by the caller.
+# Sets _COMMIT, _REF_NAME, _SANITIZED as side-effects.
 _resolve_ref() {
   _TAG="" _BRANCH=""
-  for _a in "$@"; do
-    case "$_a" in
-      --branch=*) _BRANCH="${_a#--branch=}" ;;
-      --tag=*)    _TAG="${_a#--tag=}" ;;
+  for _arg in "$@"; do
+    case "$_arg" in
+      --branch=*) _BRANCH="${_arg#--branch=}" ;;
+      --tag=*)    _TAG="${_arg#--tag=}" ;;
     esac
   done
   [ -n "$_BRANCH" ] && [ -n "$_TAG" ] && {
@@ -54,13 +55,12 @@ _require_repo() {
 # Prunes all worktrees of <bare> except the bare itself and the active worktree in state.
 # Usage: _prune_worktrees <bare> <repo-name>
 _prune_worktrees() {
-  _PT_BARE="$1"; _PT_REPO="$2"
-  _KEEP=$(_read_state "active/${_PT_REPO}" worktree)
-  git -C "$_PT_BARE" worktree list --porcelain | awk '/^worktree /{print $2}' | \
-  while IFS= read -r _wt; do
-    [ "$_wt" = "$_PT_BARE" ] && continue
-    [ "$_wt" = "$_KEEP" ]    && continue
-    git -C "$_PT_BARE" worktree remove --force "$_wt" 2>/dev/null || rm -rf "$_wt"
+  _KEEP=$(_read_state "active/${2}" worktree)
+  git -C "$1" worktree list --porcelain | awk '/^worktree /{print $2}' | \
+  while IFS= read -r _worktree; do
+    [ "$_worktree" = "$1" ]     && continue
+    [ "$_worktree" = "$_KEEP" ] && continue
+    git -C "$1" worktree remove --force "$_worktree" 2>/dev/null || rm -rf "$_worktree"
   done
 }
 
@@ -83,10 +83,10 @@ cmd_clone() {
   if [ ! -d "${_BARE}/objects" ]; then
     if [ -n "$SSH_CMD" ]; then
       GIT_SSH_COMMAND="$SSH_CMD" git clone --mirror "$REPO_URL" "$_BARE"
+      git -C "$_BARE" config core.sshCommand "$SSH_CMD"
     else
       git clone --mirror "$REPO_URL" "$_BARE"
     fi
-    [ -n "$SSH_CMD" ] && git -C "$_BARE" config core.sshCommand "$SSH_CMD"
   else
     git -C "$_BARE" remote update --prune
   fi
@@ -178,7 +178,7 @@ cmd_deploy() {
   _BARE="$(_bare_dir "$REPO_NAME")"
 
   FORCE=""
-  for _a in "$@"; do [ "$_a" = "--force" ] && FORCE=1; done
+  for _arg in "$@"; do [ "$_arg" = "--force" ] && FORCE=1; done
 
   if [ -z "$FORCE" ]; then
     _STATUS=$(_read_state "staging/${REPO_NAME}" status)
@@ -238,8 +238,8 @@ cmd_deploy() {
 cmd_get() {
   KEY="${1:?Usage: gitops get <key> [--default=<value>]}"
   _HAS_DEFAULT=0; DEFAULT=""
-  for _a in "$@"; do
-    case "$_a" in --default=*) _HAS_DEFAULT=1; DEFAULT="${_a#--default=}" ;; esac
+  for _arg in "$@"; do
+    case "$_arg" in --default=*) _HAS_DEFAULT=1; DEFAULT="${_arg#--default=}" ;; esac
   done
 
   SECTION="${KEY%%.*}"

@@ -1,6 +1,14 @@
 {{- if include "home-assistant.gitopsEnabled" . }}
 {{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops }}
 {{- $isGitOpsSSH := include "home-assistant.isGitOpsSSH" . }}
+{{- $repoNames := list -}}
+{{- $sshRepoNames := list -}}
+{{- range $gitops.repos -}}
+  {{- $repoNames = append $repoNames .name -}}
+  {{- if regexMatch `^(git@|ssh://)` (.url | default "") -}}
+    {{- $sshRepoNames = append $sshRepoNames .name -}}
+  {{- end -}}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,22 +20,12 @@ data:
     {{- .Files.Get "scripts/gitops-setup" | nindent 4 }}
   gitops: |-
     {{- .Files.Get "scripts/gitops" | nindent 4 }}
-  {{- $repoNames := list -}}
-  {{- range $gitops.repos -}}{{- $repoNames = append $repoNames .name -}}{{- end }}
-  repos: {{ join "\n" $repoNames | quote }}
+  repos: |-
+    {{- join "\n" $repoNames | nindent 4 }}
   {{- if $isGitOpsSSH }}
-  knownHosts: {{ $gitops.ssh.knownHosts | quote }}
-  {{- $sshRepoNames := list -}}
-  {{- range $gitops.repos -}}
-    {{- if regexMatch `^(git@|ssh://)` (.url | default "") -}}
-      {{- $sshRepoNames = append $sshRepoNames .name -}}
-    {{- end -}}
-  {{- end }}
-  ssh-repos: {{ join "\n" $sshRepoNames | quote }}
-  {{- end }}
-  {{- range $gitops.repos }}
-  {{- if .allowedSigners }}
-  allowed-signers-{{ .name }}: {{ .allowedSigners | quote }}
-  {{- end }}
+  knownHosts: |
+    {{- $gitops.ssh.knownHosts | nindent 4 }}
+  ssh-repos: |-
+    {{- join "\n" $sshRepoNames | nindent 4 }}
   {{- end }}
 {{- end }}
