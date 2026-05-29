@@ -16,7 +16,7 @@ spec:
   ports:
     {{- range $portName := keys $svc.ports | sortAlpha }}
     {{- $port := index $svc.ports $portName }}
-    {{- if ne $port.enabled false }}
+    {{- if eq $port.enabled true }}
     - name: {{ $portName }}
       port: {{ $port.port }}
       targetPort: {{ $portName }}

@@ -10,3 +10,5 @@ homeAssistant:
         repos:
           - name: ha-config
             url: "git@github.com:example/ha-config.git"
+            allowedSigners: |
+              user@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl

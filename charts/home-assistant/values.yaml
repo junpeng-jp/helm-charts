@@ -120,6 +120,7 @@ networking:
       type: ClusterIP
       ports:
         http:
+          enabled: true
           port: 8123
           protocol: TCP
 
@@ -196,36 +197,44 @@ homeAssistant:
         enabled: false
         secretName: ""  # required when enabled is true
 
-      # Sets up SSH credentials and git scaffolding for gitops-managed configuration.
-      # Requires persistence.enabled. The init container writes all non-secret git config
-      # (ssh_config, known_hosts, allowed_signers) to /config/.gitops/ on the PVC
-      # on every pod start, wiping and recreating the directory to remove stale files.
-      # Only the SSH private key is mounted from a Kubernetes Secret.
+      # Sets up an SSH identity and bare git mirrors for gitops-managed configuration.
+      # Requires persistence.enabled.
       #
-      # The init container also copies three Home Assistant package files
-      # (shell.yaml, script.yaml, sensor.yaml) to /config/gitops/packages/.
-      # These files are NOT under /config/packages/ and are therefore not loaded by
-      # the default '!include_dir_named packages/' directive. To activate the gitops
-      # sync commands and sensors in Home Assistant, include the directory explicitly
-      # in your configuration.yaml:
+      # The gitops CLI (clone|stage|deploy|get) is bundled in the ConfigMap. The init
+      # container installs it to /config/.gitops/run/bin/gitops on the PVC so it is
+      # available at runtime from shell commands and HA automations.
       #
-      #   homeassistant:
-      #     packages:
-      #       gitops: !include_dir_named gitops/packages/
+      # Volatile setup files (binary, SSH config, allowedSigners) are written to
+      # /config/.gitops/run/ and replaced on every pod start. State files written by
+      # the CLI are kept under /config/.gitops/state/ and survive pod restarts.
+      #
+      # Workflow:
+      #   1. On first use, call 'gitops clone <name>' at runtime to create the bare
+      #      mirror at /config/gitops/<name>.git. Subsequent pod starts update the
+      #      mirror automatically via 'gitops stage' or 'gitops deploy'.
+      #   2. Call 'gitops stage <name> [--branch=X|--tag=X]' to fetch, create a
+      #      candidate worktree, and validate it with 'hass --script check_config'.
+      #      Result is written to staging state under /config/.gitops/state/.
+      #   3. Call 'gitops deploy <name>' to promote the staged worktree to
+      #      /config/packages/gitops/<name> and prune all previous worktrees.
+      #      Requires a passing stage; use --force to override.
+      #   4. Call 'gitops get <key>' (e.g. active.<repo>.ref, staging.<repo>.status)
+      #      to read persisted state.
       gitops:
         enabled: false
 
-        # Single git repository to initialise. The init container runs 'git init', registers
-        # the remote URL, and sets core.sshCommand. Required when enabled.
-        repo: {}
-        # name: ha-config        # required: repo identifier (alphanumeric, hyphens, underscores)
-        # url: git@github.com:your-org/ha-config.git  # required: git remote URL
-        # allowedSigners: |      # optional: inline SSH public keys trusted to sign commits/tags
-        #   user@example.com ssh-ed25519 AAAAC3...
+        # Whitelisted repositories the gitops workflow can pull from.
+        # Each repo is cloned as a bare mirror on every pod start. The gitops CLI
+        # operates on repos by name at runtime.
+        repos: []
+        # - name: ha-config        # required: repo identifier (alphanumeric, hyphens, underscores)
+        #   url: git@github.com:your-org/ha-config.git  # required: git remote URL
+        #   allowedSigners: |      # optional: inline SSH public keys trusted to sign commits/tags
+        #     user@example.com ssh-ed25519 AAAAC3...
 
         ssh:
-          # SSH credentials — required only when repo.url uses the git@ or ssh:// scheme.
-          # Not needed for https:// URLs.
+          # SSH identity used for all repos. Required only when any repo URL uses
+          # the git@ or ssh:// scheme. Not needed for https:// URLs.
 
           # Name of a Kubernetes Secret containing the SSH deploy key.
           # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
@@ -258,13 +267,14 @@ homeAssistant:
   configuration:
     enabled: false
     # Raw string written verbatim as /config/configuration.yaml.
-    # The default delegates all configuration to the packages/ directory on the PVC,
-    # which is the recommended approach for gitops-managed installs.
-    # Override with a literal block scalar (|) to add singleton config (http, logger, etc.)
-    # or !include directives for UI-managed files.
-    content: |
-      homeassistant:
-        packages: !include_dir_named packages/
+    # Override with a literal block scalar (|) to configure Home Assistant.
+    # For gitops-managed installs, include the gitops/ directory so that deployed
+    # repos are loaded as packages:
+    #
+    #   content: |
+    #     homeassistant:
+    #       packages: !include_dir_named gitops/
+    content: ""
     checkConfig:
       enabled: false  # runs 'hass --script check_config' in an init container before startup. requires configuration.enabled and persistence.enabled
       resources:

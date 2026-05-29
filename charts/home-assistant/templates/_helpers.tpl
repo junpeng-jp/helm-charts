@@ -61,7 +61,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "home-assistant.portEnabled" -}}
-{{- if ne .enabled false }}true{{- end -}}
+{{- if eq .enabled true }}true{{- end -}}
 {{- end -}}
 
 {{- define "home-assistant.bootstrapEnabled" -}}
@@ -75,8 +75,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "home-assistant.isGitOpsSSH" -}}
-{{- $url := .Values.homeAssistant.initContainer.tasks.gitops.repo.url | default "" -}}
-{{- if or (hasPrefix "git@" $url) (hasPrefix "ssh://" $url) -}}true{{- end -}}
+{{- $found := dict -}}
+{{- range .Values.homeAssistant.initContainer.tasks.gitops.repos -}}
+  {{- if regexMatch `^(git@|ssh://)` (.url | default "") -}}
+    {{- $_ := set $found "v" true -}}
+  {{- end -}}
+{{- end -}}
+{{- if $found.v -}}true{{- end -}}
 {{- end -}}
 
 {{- define "home-assistant.initContainer.securityContext" -}}
@@ -106,29 +111,15 @@ securityContext:
 {{- include "home-assistant.fullname" . }}-gitops
 {{- end -}}
 
-{{- define "home-assistant.initContainer.gitopsSetup" -}}
+{{- define "home-assistant.initContainer.gitopsInit" -}}
+{{- if include "home-assistant.gitopsEnabled" . -}}
 {{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops -}}
 {{- $isGitOpsSSH := include "home-assistant.isGitOpsSSH" . -}}
-{{- $gitopsMountPath := "/run/gitops-configmap" -}}
-{{- if $gitops.enabled }}
-- name: gitops-setup
+- name: gitops-init
   {{- include "home-assistant.initContainer.baseFields" . | nindent 2 }}
   command:
     - sh
-    - {{ $gitopsMountPath }}/gitops_setup.sh
-  env:
-    - name: REPO_NAME
-      value: {{ $gitops.repo.name | quote }}
-    - name: REPO_URL
-      value: {{ $gitops.repo.url | quote }}
-    {{- if $isGitOpsSSH }}
-    - name: KNOWN_HOSTS
-      value: {{ $gitops.ssh.knownHosts | quote }}
-    {{- end }}
-    {{- with $gitops.repo.allowedSigners }}
-    - name: ALLOWED_SIGNERS
-      value: {{ . | quote }}
-    {{- end }}
+    - /run/gitops/gitops-setup
   {{- with .Values.homeAssistant.initContainer.resources }}
   resources:
     {{- toYaml . | nindent 4 }}
@@ -137,7 +128,7 @@ securityContext:
     - name: config
       mountPath: /config
     - name: gitops-configmap
-      mountPath: {{ $gitopsMountPath }}
+      mountPath: /run/gitops
       readOnly: true
     {{- if $isGitOpsSSH }}
     - name: gitops-ssh-key
@@ -221,7 +212,7 @@ securityContext:
 {{- end -}}
 
 {{- define "home-assistant.initContainers" -}}
-{{- include "home-assistant.initContainer.gitopsSetup" . }}
+{{- include "home-assistant.initContainer.gitopsInit" . }}
 {{- include "home-assistant.initContainer.bootstrap" . }}
 {{- with .Values.initContainers }}
 {{- toYaml . | nindent 0 }}
@@ -244,7 +235,7 @@ securityContext:
 - name: init-scripts
   configMap:
     name: {{ include "home-assistant.configmapName.initScripts" . }}
-    defaultMode: 0755
+    defaultMode: 0644
 {{- end }}
 {{- if include "home-assistant.gitopsEnabled" . }}
 {{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops -}}
@@ -252,7 +243,7 @@ securityContext:
 - name: gitops-configmap
   configMap:
     name: {{ include "home-assistant.configmapName.gitops" . }}
-    defaultMode: 0755
+    defaultMode: 0644
 {{- if $isGitOpsSSH }}
 - name: gitops-ssh-key
   secret:

@@ -72,6 +72,12 @@ spec:
               subPath: configuration.yaml
               readOnly: true
             {{- end }}
+            {{- if include "home-assistant.isGitOpsSSH" . }}
+            - name: gitops-ssh-key
+              mountPath: /run/secrets/gitops/ssh_key
+              subPath: {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.secretKey }}
+              readOnly: true
+            {{- end }}
             {{- range .Values.secretVolumeMounts }}
             - name: {{ .name | default .secretName }}
               mountPath: /run/secrets/{{ .mountPath | default .secretName }}

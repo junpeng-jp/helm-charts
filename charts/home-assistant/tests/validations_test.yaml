@@ -7,13 +7,27 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: fails when gateway ingress is enabled but networking.service.app is disabled
+  # ============================================================
+  # Networking
+  # ============================================================
+
+  - it: fails when an enabled service has all ports explicitly disabled
     set:
-      ingress.gateway.enabled: true
-      networking.service.app.enabled: false
+      networking.service.app.ports.http.enabled: false
     asserts:
       - failedTemplate:
-          errorMessage: "ingress.gateway requires networking.service.app to be enabled"
+          errorMessage: "networking.service.app is enabled but has no enabled ports; enable at least one port or disable the service"
+
+  - it: does not fail when a service is disabled even if all its ports are disabled
+    set:
+      networking.service.app.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # ============================================================
+  # Ingress
+  # ============================================================
 
   - it: fails when both gateway and traefik ingress are enabled simultaneously
     set:
@@ -23,22 +37,106 @@ tests:
       - failedTemplate:
           errorMessage: "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)"
 
-  - it: fails when configuration is enabled without persistence
+  - it: fails when gateway ingress is enabled but networking.service.app is disabled
     set:
-      homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.content: "homeassistant:\n  name: Home\n"
-      persistence.enabled: false
+      ingress.gateway.enabled: true
+      networking.service.app.enabled: false
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.configuration.enabled requires persistence.enabled to be true"
+          errorMessage: "ingress.gateway requires networking.service.app to be enabled"
 
-  - it: fails when checkConfig is enabled without configuration enabled
+  - it: fails when gateway ingress is enabled but http port is absent
     set:
-      homeAssistant.configuration.enabled: false
-      homeAssistant.configuration.checkConfig.enabled: true
+      ingress.gateway.enabled: true
+      networking.service.app.ports.http: null
+      networking.service.app.ports.other.enabled: true
+      networking.service.app.ports.other.port: 9090
+      networking.service.app.ports.other.protocol: TCP
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true"
+          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined and enabled"
+
+  - it: fails when gateway ingress is enabled without hostnames
+    set:
+      ingress.gateway.enabled: true
+      ingress.gateway.hostnames: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway.enabled requires ingress.gateway.hostnames to be set with at least one entry"
+
+  - it: fails when gateway ingress is enabled without parentRefs
+    set:
+      ingress.gateway.enabled: true
+      ingress.gateway.parentRefs: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway.enabled requires ingress.gateway.parentRefs to be set with at least one entry"
+
+  - it: fails when traefik ingress is enabled without hostnames
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.hostnames: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik.enabled requires ingress.traefik.hostnames to be set with at least one entry"
+
+  - it: fails when traefik tls is enabled without secretName or certResolver
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.secretName: ""
+      ingress.traefik.tls.certResolver: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set"
+
+  - it: traefik tls passes with secretName set
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.secretName: my-tls-secret
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: traefik tls passes with certResolver set
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.certResolver: letsencrypt
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # ============================================================
+  # Persistence
+  # ============================================================
+
+  - it: fails when existingClaim and existingVolume are both set
+    set:
+      persistence.existingClaim: my-pvc
+      persistence.existingVolume: my-pv
+    asserts:
+      - failedTemplate:
+          errorMessage: "persistence.existingClaim and persistence.existingVolume are mutually exclusive; unset one"
+
+  - it: fails when persistence is enabled without existingClaim or size
+    set:
+      persistence.enabled: true
+      persistence.size: ""
+      persistence.existingClaim: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "persistence.enabled requires either persistence.existingClaim or persistence.size to be set"
+
+  - it: passes when persistence is enabled with existingClaim
+    set:
+      persistence.enabled: true
+      persistence.size: ""
+      persistence.existingClaim: my-pvc
+    asserts:
+      - hasDocuments:
+          count: 0
 
   - it: fails when existingClaim is set but persistence is disabled
     set:
@@ -72,6 +170,136 @@ tests:
       - hasDocuments:
           count: 0
 
+  # ============================================================
+  # Monitor
+  # ============================================================
+
+  - it: fails when monitor is enabled without path
+    set:
+      monitor.metric.enabled: true
+      monitor.metric.path: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "monitor.metric.enabled requires monitor.metric.path to be set"
+
+  - it: fails when monitor is enabled without port
+    set:
+      monitor.metric.enabled: true
+      monitor.metric.port: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "monitor.metric.enabled requires monitor.metric.port to be set"
+
+  - it: fails when monitor port does not exist in any service
+    set:
+      monitor.metric.enabled: true
+      monitor.metric.port: nonexistent
+    asserts:
+      - failedTemplate:
+          errorMessage: 'monitor.metric.port "nonexistent" is not defined in any enabled service in networking.service'
+
+  - it: fails when monitor port matches only a disabled service port
+    set:
+      monitor.metric.enabled: true
+      networking.service.app.ports.http.enabled: false
+      networking.service.app.ports.other.enabled: true
+      networking.service.app.ports.other.port: 9090
+      networking.service.app.ports.other.protocol: TCP
+    asserts:
+      - failedTemplate:
+          errorMessage: 'monitor.metric.port "http" is not defined in any enabled service in networking.service'
+
+  # ============================================================
+  # GitOps
+  # ============================================================
+
+  - it: fails when gitops is enabled without persistence
+    values:
+      - fixtures/gitops-minimal.yaml
+    set:
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.gitops.enabled requires persistence.enabled to be true"
+
+  - it: fails when gitops is enabled without repos
+    set:
+      homeAssistant.initContainer.tasks.gitops.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.gitops.enabled requires at least one entry in homeAssistant.initContainer.tasks.gitops.repos"
+
+  - it: fails when gitops repos has duplicate names
+    values:
+      - fixtures/gitops-duplicate-repos.yaml
+    asserts:
+      - failedTemplate:
+          errorMessage: 'homeAssistant.initContainer.tasks.gitops.repos: duplicate repo name "ha-config"'
+
+  - it: gitops with https URL passes validation without ssh settings
+    values:
+      - fixtures/gitops-https.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when gitops SSH repo is configured without ssh.secretName
+    values:
+      - fixtures/gitops-minimal.yaml
+    set:
+      homeAssistant.initContainer.tasks.gitops.ssh.secretName: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.gitops: SSH repos require homeAssistant.initContainer.tasks.gitops.ssh.secretName to be set"
+
+  - it: fails when gitops SSH repo is configured without ssh.knownHosts
+    values:
+      - fixtures/gitops-minimal.yaml
+    set:
+      homeAssistant.initContainer.tasks.gitops.ssh.knownHosts: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.gitops: SSH repos require homeAssistant.initContainer.tasks.gitops.ssh.knownHosts to be set"
+
+  - it: gitops with mixed SSH and HTTPS repos passes when ssh settings are provided
+    values:
+      - fixtures/gitops-mixed-repos.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when gitops and configuration are both enabled but content does not reference gitops/
+    values:
+      - fixtures/gitops-minimal.yaml
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.content: "homeassistant:\n  name: Home\n"
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.configuration.content does not reference the gitops/ directory; add '!include_dir_named gitops/' to homeassistant.packages so deployed repos are loaded"
+
+  - it: passes when gitops and configuration are both enabled and content references gitops/
+    values:
+      - fixtures/gitops-minimal.yaml
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.content: "homeassistant:\n  packages: !include_dir_named gitops/\n"
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # ============================================================
+  # Init Container Tasks
+  # ============================================================
+
+  - it: fails when setupHACS is enabled without version
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.setupHACS.enabled requires homeAssistant.initContainer.tasks.setupHACS.version to be set"
+
   - it: fails when setupHACS is enabled without persistence
     set:
       homeAssistant.initContainer.tasks.setupHACS.enabled: true
@@ -81,6 +309,14 @@ tests:
       - failedTemplate:
           errorMessage: "homeAssistant.initContainer.tasks.setupHACS requires persistence.enabled to be true"
 
+  - it: fails when setupSecretsYaml is enabled without secretName
+    set:
+      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
+      homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.initContainer.tasks.setupSecretsYaml.enabled requires homeAssistant.initContainer.tasks.setupSecretsYaml.secretName to be set"
+
   - it: fails when setupSecretsYaml is enabled without persistence
     set:
       homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
@@ -89,6 +325,39 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.initContainer.tasks.setupSecretsYaml requires persistence.enabled to be true"
+
+  # ============================================================
+  # Configuration
+  # ============================================================
+
+  - it: fails when configuration is enabled without content
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.content: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.configuration.enabled requires homeAssistant.configuration.content to be set"
+
+  - it: fails when configuration is enabled without persistence
+    set:
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.content: "homeassistant:\n  name: Home\n"
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.configuration.enabled requires persistence.enabled to be true"
+
+  - it: fails when checkConfig is enabled without configuration enabled
+    set:
+      homeAssistant.configuration.enabled: false
+      homeAssistant.configuration.checkConfig.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true"
+
+  # ============================================================
+  # Secret Volume Mounts
+  # ============================================================
 
   - it: fails when secretVolumeMounts has duplicate volume names
     set:
@@ -121,7 +390,11 @@ tests:
       - failedTemplate:
           errorMessage: 'secretVolumeMounts: secret "ha-secrets" is already used by homeAssistant.initContainer.tasks.setupSecretsYaml to generate /config/secrets.yaml; remove it from secretVolumeMounts'
 
-  - it: fails when user initContainers uses a reserved name
+  # ============================================================
+  # Init Containers
+  # ============================================================
+
+  - it: fails when user initContainers uses reserved name bootstrap
     set:
       initContainers:
         - name: bootstrap
@@ -131,65 +404,12 @@ tests:
       - failedTemplate:
           errorMessage: 'initContainers: name "bootstrap" is reserved by the chart; rename your init container'
 
-  - it: fails when gitops is enabled without persistence
+  - it: fails when user initContainers uses reserved name gitops-init
     set:
-      homeAssistant.initContainer.tasks.gitops.enabled: true
-      homeAssistant.initContainer.tasks.gitops.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
-      homeAssistant.initContainer.tasks.gitops.ssh.secretName: ha-gitops-ssh
-      homeAssistant.initContainer.tasks.gitops.repo.name: ha-config
-      homeAssistant.initContainer.tasks.gitops.repo.url: "git@github.com:example/ha-config.git"
-      persistence.enabled: false
+      initContainers:
+        - name: gitops-init
+          image: busybox:latest
+          command: ["sh", "-c", "echo hi"]
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.initContainer.tasks.gitops.enabled requires persistence.enabled to be true"
-
-  - it: gitops with https URL passes validation without ssh settings
-    set:
-      homeAssistant.initContainer.tasks.gitops.enabled: true
-      homeAssistant.initContainer.tasks.gitops.repo.name: helm-charts
-      homeAssistant.initContainer.tasks.gitops.repo.url: "https://github.com/junpeng-jp/helm-charts.git"
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: fails when gateway ingress is enabled but http port is absent
-    set:
-      ingress.gateway.enabled: true
-      networking.service.app.ports.http: null
-      networking.service.app.ports.other.port: 9090
-      networking.service.app.ports.other.protocol: TCP
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined and enabled"
-
-  - it: fails when monitor port does not exist in any service
-    set:
-      monitor.metric.enabled: true
-      monitor.metric.port: nonexistent
-    asserts:
-      - failedTemplate:
-          errorMessage: 'monitor.metric.port "nonexistent" is not defined in any enabled service in networking.service'
-
-  - it: fails when monitor port matches only a disabled service port
-    set:
-      monitor.metric.enabled: true
-      networking.service.app.ports.http.enabled: false
-      networking.service.app.ports.other.port: 9090
-      networking.service.app.ports.other.protocol: TCP
-    asserts:
-      - failedTemplate:
-          errorMessage: 'monitor.metric.port "http" is not defined in any enabled service in networking.service'
-
-  - it: fails when an enabled service has all ports explicitly disabled
-    set:
-      networking.service.app.ports.http.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: "networking.service.app is enabled but has no enabled ports; enable at least one port or disable the service"
-
-  - it: does not fail when a service is disabled even if all its ports are disabled
-    set:
-      networking.service.app.enabled: false
-    asserts:
-      - hasDocuments:
-          count: 0
+          errorMessage: 'initContainers: name "gitops-init" is reserved by the chart; rename your init container'

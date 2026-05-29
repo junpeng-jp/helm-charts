@@ -1,0 +1,10 @@
+homeAssistant:
+  initContainer:
+    tasks:
+      gitops:
+        enabled: true
+        repos:
+          - name: ha-config
+            url: "https://github.com/example/ha-config.git"
+          - name: ha-config
+            url: "https://github.com/example/ha-config-2.git"

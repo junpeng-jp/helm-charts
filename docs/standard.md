@@ -30,9 +30,13 @@ Ship `values.schema.json`. Requirements:
 - `"required"` for fields with no meaningful default
 - `"enum"` for `pullPolicy`; `"pattern"` for tags where practical
 
-### Use `empty` not `not` for maps and lists
+**Division of responsibility**: `values.schema.json` owns structural validation — types, `additionalProperties`, `enum`, `pattern`, and unconditionally required fields. `validations.yaml` owns everything conditional: fields required only when a feature is enabled, mutual exclusions, and cross-feature dependencies. This keeps the schema readable and makes all conditional logic unit-testable via `helm unittest`.
 
-`not` is `true` for nil but `false` for `{}` and `[]`. `empty` is `true` for all three.
+Do not use `if/then`, `allOf`, or `not` in the schema for conditional requirements or mutual exclusions — express those in `validations.yaml` instead.
+
+### Use `empty` not `not` for maps and lists in `validations.yaml`
+
+For the cross-feature checks that must live in `validations.yaml`, `not` is `true` for nil but `false` for `{}` and `[]`. `empty` is `true` for all three.
 
 ```
 {{- /* Bad — passes for config: {} */ -}}
@@ -40,25 +44,6 @@ Ship `values.schema.json`. Requirements:
 
 {{- /* Good */ -}}
 {{- if and .Values.feature.enabled (empty .Values.feature.config) }}
-```
-
-### Validate sibling features symmetrically
-
-When two features share the same shape, apply the same validation to both. Checking one and silently accepting the other creates an inconsistent failure surface.
-
-```
-{{- /* Bad — gateway hostnames silently accept [] */ -}}
-{{- if and .Values.ingress.traefik.enabled (empty .Values.ingress.traefik.hostnames) }}
-{{- fail "traefik.hostnames must have at least one entry" }}
-{{- end }}
-
-{{- /* Good */ -}}
-{{- if and .Values.ingress.traefik.enabled (empty .Values.ingress.traefik.hostnames) }}
-{{- fail "traefik.hostnames must have at least one entry" }}
-{{- end }}
-{{- if and .Values.ingress.gateway.enabled (empty .Values.ingress.gateway.hostnames) }}
-{{- fail "gateway.hostnames must have at least one entry" }}
-{{- end }}
 ```
 
 ---

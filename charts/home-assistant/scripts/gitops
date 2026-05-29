@@ -1,0 +1,277 @@
+#!/bin/sh
+set -eu
+
+CONFIG_DIR="/config"
+GITOPS_BASE="${CONFIG_DIR}/.gitops"
+GITOPS_REPOS_BASE="${GITOPS_BASE}/repos"
+
+_bare_dir()      { printf '%s' "${GITOPS_REPOS_BASE}/${1}.git"; }
+_worktrees_dir() { printf '%s' "${GITOPS_REPOS_BASE}/${1}"; }
+
+# Parses [--branch=X|--tag=X] from "$@".
+# Sets _COMMIT, _REF_NAME, _SANITIZED as side-effects. Requires _BARE to be set.
+_resolve_ref() {
+  _TAG="" _BRANCH=""
+  for _a in "$@"; do
+    case "$_a" in
+      --branch=*) _BRANCH="${_a#--branch=}" ;;
+      --tag=*)    _TAG="${_a#--tag=}" ;;
+    esac
+  done
+  [ -n "$_BRANCH" ] && [ -n "$_TAG" ] && {
+    echo "ERROR: --branch and --tag are mutually exclusive" >&2; exit 1; }
+
+  if [ -n "$_TAG" ]; then
+    _COMMIT=$(git -C "$_BARE" rev-parse "refs/tags/${_TAG}") \
+      || { printf 'ERROR: tag %s not found\n' "$_TAG" >&2; exit 1; }
+    _REF_NAME="$_TAG"
+    _SANITIZED=$(printf '%s' "$_TAG" | tr '/' '-')
+  else
+    _BRANCH="${_BRANCH:-main}"
+    _COMMIT=$(git -C "$_BARE" rev-parse "refs/heads/${_BRANCH}") \
+      || { printf 'ERROR: branch %s not found\n' "$_BRANCH" >&2; exit 1; }
+    _REF_NAME="$_BRANCH"
+    _SANITIZED=$(printf '%s' "$_BRANCH" | tr '/' '-')
+  fi
+}
+
+_read_state() {
+  # Usage: _read_state <section> <field>
+  cat "${GITOPS_BASE}/state/${1}/${2}" 2>/dev/null || true
+}
+
+_write_state() {
+  # Usage: _write_state <section> <field> <value>
+  mkdir -p "${GITOPS_BASE}/state/${1}"
+  printf '%s' "$3" > "${GITOPS_BASE}/state/${1}/${2}"
+}
+
+_require_repo() {
+  [ -d "$(_bare_dir "$1")/objects" ] \
+    || { printf 'ERROR: repo %s not found. Run: gitops clone %s <url>\n' "$1" "$1" >&2; exit 1; }
+}
+
+# Prunes all worktrees of <bare> except the bare itself and the active worktree in state.
+# Usage: _prune_worktrees <bare> <repo-name>
+_prune_worktrees() {
+  _PT_BARE="$1"; _PT_REPO="$2"
+  _KEEP=$(_read_state "active/${_PT_REPO}" worktree)
+  git -C "$_PT_BARE" worktree list --porcelain | awk '/^worktree /{print $2}' | \
+  while IFS= read -r _wt; do
+    [ "$_wt" = "$_PT_BARE" ] && continue
+    [ "$_wt" = "$_KEEP" ]    && continue
+    git -C "$_PT_BARE" worktree remove --force "$_wt" 2>/dev/null || rm -rf "$_wt"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# gitops clone <repo-name> <repo-url>
+# ---------------------------------------------------------------------------
+# Clones the bare mirror onto the PVC. allowedSigners are read from
+# ${GITOPS_BASE}/run/allowed-signers/<name> when present (written there by
+# gitops-setup during pod initialisation).
+
+cmd_clone() {
+  REPO_NAME="${1:?Usage: gitops clone <repo-name> <repo-url>}"
+  REPO_URL="${2:?Usage: gitops clone <repo-name> <repo-url>}"
+  _BARE="$(_bare_dir "$REPO_NAME")"
+
+  SSH_CMD=
+  grep -qxF "$REPO_NAME" "${GITOPS_BASE}/run/ssh-repos" 2>/dev/null && \
+    SSH_CMD="ssh -F ${GITOPS_BASE}/run/ssh_config"
+
+  if [ ! -d "${_BARE}/objects" ]; then
+    if [ -n "$SSH_CMD" ]; then
+      GIT_SSH_COMMAND="$SSH_CMD" git clone --mirror "$REPO_URL" "$_BARE"
+    else
+      git clone --mirror "$REPO_URL" "$_BARE"
+    fi
+    [ -n "$SSH_CMD" ] && git -C "$_BARE" config core.sshCommand "$SSH_CMD"
+  else
+    git -C "$_BARE" remote update --prune
+  fi
+
+  _AS="${GITOPS_BASE}/run/allowed-signers/${REPO_NAME}"
+  if [ -f "$_AS" ]; then
+    git -C "$_BARE" config gpg.ssh.allowedSignersFile "$_AS"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# gitops stage <repo-name> [--branch=X|--tag=X]
+# ---------------------------------------------------------------------------
+# Fetches latest, creates a candidate worktree, builds a staging config dir
+# that mirrors /config with the candidate swapped into packages/gitops/<repo>,
+# runs hass --script check_config, and writes the result to staging state.
+
+cmd_stage() {
+  REPO_NAME="${1:?Usage: gitops stage <repo-name> [--branch=X|--tag=X]}"
+  shift
+  _require_repo "$REPO_NAME"
+  _BARE="$(_bare_dir "$REPO_NAME")"
+
+  git -C "$_BARE" remote update --prune
+  _resolve_ref "$@"
+  _prune_worktrees "$_BARE" "$REPO_NAME"
+
+  # Repos without allowedSigners skip signature verification by design.
+  if git -C "$_BARE" config gpg.ssh.allowedSignersFile >/dev/null 2>&1; then
+    git -C "$_BARE" verify-commit "$_COMMIT" \
+      || { printf 'ERROR: signature verification failed for %s\n' "$_COMMIT" >&2; exit 1; }
+  fi
+
+  _SHORT=$(git -C "$_BARE" rev-parse --short "$_COMMIT")
+  _WORKTREE="$(_worktrees_dir "$REPO_NAME")/${_SANITIZED}-${_SHORT}"
+
+  mkdir -p "$(_worktrees_dir "$REPO_NAME")"
+  [ -d "$_WORKTREE" ] || git -C "$_BARE" worktree add "$_WORKTREE" "$_COMMIT"
+
+  # Build staging config: mirror /config with candidate worktree swapped in at
+  # gitops/<repo-name>, preserving all other gitops siblings.
+  STAGING_CONFIG="${GITOPS_BASE}/staging/config"
+  rm -rf "${GITOPS_BASE}/staging" "${GITOPS_BASE}/state/staging/${REPO_NAME}"
+  mkdir -p "${STAGING_CONFIG}/gitops"
+
+  find "$CONFIG_DIR" -maxdepth 1 -mindepth 1 ! -name '.gitops' ! -name 'gitops' \
+    -exec ln -s {} "$STAGING_CONFIG/" \;
+  [ -d "$CONFIG_DIR/gitops" ] && \
+    find "$CONFIG_DIR/gitops" -maxdepth 1 -mindepth 1 ! -name "$REPO_NAME" \
+      -exec ln -s {} "$STAGING_CONFIG/gitops/" \;
+
+  ln -s "$_WORKTREE" "$STAGING_CONFIG/gitops/$REPO_NAME"
+
+  CHECK_STATUS="ok"
+  CHECK_OUTPUT=$(hass --script check_config --config "$STAGING_CONFIG" 2>&1) \
+    || CHECK_STATUS="failed"
+
+  rm -rf "${GITOPS_BASE}/staging"
+
+  _write_state "staging/${REPO_NAME}" ref       "$_REF_NAME"
+  _write_state "staging/${REPO_NAME}" commit    "$_COMMIT"
+  _write_state "staging/${REPO_NAME}" short     "$_SHORT"
+  _write_state "staging/${REPO_NAME}" timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _write_state "staging/${REPO_NAME}" status    "$CHECK_STATUS"
+  _write_state "staging/${REPO_NAME}" worktree  "$_WORKTREE"
+  _write_state "staging/${REPO_NAME}" output    "$CHECK_OUTPUT"
+
+  if [ "$CHECK_STATUS" = "failed" ]; then
+    printf 'ERROR: check_config failed:\n%s\n' "$CHECK_OUTPUT" >&2
+    exit 1
+  fi
+
+  printf 'Stage passed: %s at %s (%s)\n' "$REPO_NAME" "$_REF_NAME" "$_SHORT"
+}
+
+# ---------------------------------------------------------------------------
+# gitops deploy <repo-name> [--force] [--branch=X|--tag=X]
+# ---------------------------------------------------------------------------
+# Without --force: promotes the staged worktree. Requires a passing stage.
+# With    --force: bypasses the stage gate. --branch/--tag selects the ref
+#                  (defaults to main). Reuses the staged worktree when it
+#                  matches the resolved commit, otherwise creates a new one.
+# After deploy, all worktrees except the active one are pruned.
+
+cmd_deploy() {
+  REPO_NAME="${1:?Usage: gitops deploy <repo-name> [--force] [--branch=X|--tag=X]}"
+  shift
+  _require_repo "$REPO_NAME"
+  _BARE="$(_bare_dir "$REPO_NAME")"
+
+  FORCE=""
+  for _a in "$@"; do [ "$_a" = "--force" ] && FORCE=1; done
+
+  if [ -z "$FORCE" ]; then
+    _STATUS=$(_read_state "staging/${REPO_NAME}" status)
+    _WORKTREE=$(_read_state "staging/${REPO_NAME}" worktree)
+    _COMMIT=$(_read_state "staging/${REPO_NAME}" commit)
+    _REF_NAME=$(_read_state "staging/${REPO_NAME}" ref)
+    _SHORT=$(_read_state "staging/${REPO_NAME}" short)
+
+    [ -z "$_STATUS" ] && {
+      printf 'ERROR: no stage found for %s. Run: gitops stage, or use --force\n' \
+        "$REPO_NAME" >&2; exit 1; }
+    [ "$_STATUS" != "ok" ] && {
+      printf 'ERROR: last stage for %s failed. Fix config or use --force\n' \
+        "$REPO_NAME" >&2; exit 1; }
+    [ ! -d "$_WORKTREE" ] && {
+      echo "ERROR: staged worktree missing. Re-run: gitops stage" >&2; exit 1; }
+  else
+    _resolve_ref "$@"
+    _SHORT=$(git -C "$_BARE" rev-parse --short "$_COMMIT")
+    _STAGED_WORKTREE=$(_read_state "staging/${REPO_NAME}" worktree)
+    _STAGED_COMMIT=$(_read_state "staging/${REPO_NAME}" commit)
+
+    if [ -n "$_STAGED_WORKTREE" ] && [ "$_STAGED_COMMIT" = "$_COMMIT" ] \
+        && [ -d "$_STAGED_WORKTREE" ]; then
+      _WORKTREE="$_STAGED_WORKTREE"
+    else
+      _WORKTREE="$(_worktrees_dir "$REPO_NAME")/${_SANITIZED}-${_SHORT}"
+      mkdir -p "$(_worktrees_dir "$REPO_NAME")"
+      [ -d "$_WORKTREE" ] || git -C "$_BARE" worktree add "$_WORKTREE" "$_COMMIT"
+    fi
+  fi
+
+  mkdir -p "${CONFIG_DIR}/gitops"
+  ln -snf "$_WORKTREE" "${CONFIG_DIR}/gitops/${REPO_NAME}"
+
+  _write_state "active/${REPO_NAME}" ref       "$_REF_NAME"
+  _write_state "active/${REPO_NAME}" commit    "$_COMMIT"
+  _write_state "active/${REPO_NAME}" short     "$_SHORT"
+  _write_state "active/${REPO_NAME}" timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _write_state "active/${REPO_NAME}" worktree  "$_WORKTREE"
+
+  # Prune all worktrees except the active one
+  _prune_worktrees "$_BARE" "$REPO_NAME"
+
+  printf 'Deployed %s at %s (%s)\n' "$REPO_NAME" "$_REF_NAME" "$_SHORT"
+}
+
+# ---------------------------------------------------------------------------
+# gitops get <key> [--default=<value>]
+# ---------------------------------------------------------------------------
+# Reads a state value. Key format: <section>.<repo>.<field>
+# Sections: active, staging
+# Fields:   ref, commit, short, timestamp, worktree (active only);
+#           status, output (staging only)
+# Exits non-zero if the key does not exist and --default is not provided.
+
+cmd_get() {
+  KEY="${1:?Usage: gitops get <key> [--default=<value>]}"
+  _HAS_DEFAULT=0; DEFAULT=""
+  for _a in "$@"; do
+    case "$_a" in --default=*) _HAS_DEFAULT=1; DEFAULT="${_a#--default=}" ;; esac
+  done
+
+  SECTION="${KEY%%.*}"
+  REST="${KEY#*.}"
+  case "$SECTION" in
+    active|staging) ;;
+    *) printf 'ERROR: unknown section "%s" (use active or staging)\n' \
+         "$SECTION" >&2; exit 1 ;;
+  esac
+
+  REPO="${REST%%.*}"
+  FIELD="${REST#*.}"
+  [ "$REPO" = "$REST" ] && {
+    printf 'ERROR: key must be <section>.<repo>.<field>\n' >&2; exit 1; }
+
+  _FILE="${GITOPS_BASE}/state/${SECTION}/${REPO}/${FIELD}"
+  if [ -f "$_FILE" ]; then
+    cat "$_FILE"
+  elif [ "$_HAS_DEFAULT" = "1" ]; then
+    printf '%s' "$DEFAULT"
+  else
+    printf 'ERROR: state key "%s" not found\n' "$KEY" >&2
+    exit 1
+  fi
+}
+
+CMD="${1:?Usage: gitops <clone|stage|deploy|get> [args...]}"
+shift
+case "$CMD" in
+  clone)  cmd_clone  "$@"   ;;
+  stage)  cmd_stage  "$@"   ;;
+  deploy) cmd_deploy "$@"   ;;
+  get)    cmd_get    "$@"   ;;
+  *) printf 'ERROR: unknown command "%s"\n' "$CMD" >&2; exit 1 ;;
+esac

@@ -34,13 +34,15 @@ fi
 
 if [ "${SECRETS_ENABLED}" = "true" ]; then
   printf '' > /config/secrets.yaml
+  _secrets_count=0
   for f in "${SECRETS_DIR}"/*; do
     [ -f "$f" ] || continue
-    # Use block scalar (|-) so that quotes, backslashes, and newlines in values
-    # never produce invalid YAML. Trailing newlines are stripped by the |- chomping.
+    _secrets_count=$((_secrets_count + 1))
     printf '%s: |-\n' "$(basename "$f")" >> /config/secrets.yaml
     sed 's/^/  /' "$f" >> /config/secrets.yaml
     printf '\n' >> /config/secrets.yaml
   done
+  [ "$_secrets_count" -eq 0 ] && \
+    printf 'WARNING: %s has no files; /config/secrets.yaml will be empty\n' "$SECRETS_DIR" >&2
 fi
 

@@ -10,3 +10,5 @@ homeAssistant:
         repos:
           - name: ha-config
             url: "git@github.com:example/ha-config.git"
+          - name: ha-themes
+            url: "https://github.com/example/ha-themes.git"

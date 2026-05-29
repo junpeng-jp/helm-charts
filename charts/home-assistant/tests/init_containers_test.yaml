@@ -16,7 +16,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: gitops-setup
+          value: gitops-init
       - equal:
           path: spec.template.spec.initContainers[1].name
           value: bootstrap
@@ -36,13 +36,13 @@ tests:
           path: spec.template.spec.initContainers[3].command[0]
           value: hass
 
-  - it: gitops-setup runs as root with DROP ALL and no CHOWN capability
+  - it: gitops-init runs as root with DROP ALL, no CHOWN capability, and mounts SSH key when SSH is configured
     values:
       - fixtures/gitops-minimal.yaml
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: gitops-setup
+          value: gitops-init
       - equal:
           path: spec.template.spec.initContainers[0].securityContext.runAsUser
           value: 0
@@ -65,7 +65,7 @@ tests:
             - name: config
               mountPath: /config
             - name: gitops-configmap
-              mountPath: /run/gitops-configmap
+              mountPath: /run/gitops
               readOnly: true
             - name: gitops-ssh-key
               mountPath: /run/secrets/gitops/ssh_key
@@ -110,7 +110,7 @@ tests:
             name: SECRETS_DIR
             value: "/run/secrets/ha-secrets"
 
-  - it: gitops-setup and bootstrap use homeAssistant.initContainer.resources when overridden
+  - it: gitops-init and bootstrap use homeAssistant.initContainer.resources when overridden
     values:
       - fixtures/gitops-minimal.yaml
     set:
@@ -165,7 +165,7 @@ tests:
             name: init-scripts
             configMap:
               name: RELEASE-NAME-home-assistant-init-scripts
-              defaultMode: 493
+              defaultMode: 420
 
   - it: check-config mounts config PVC and configuration ConfigMap; gitops volumes are excluded
     values:
@@ -176,7 +176,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: gitops-setup
+          value: gitops-init
       - equal:
           path: spec.template.spec.initContainers[1].name
           value: check-config
