@@ -70,18 +70,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if or $hacsEnabled $secretsEnabled -}}true{{- end -}}
 {{- end -}}
 
-{{- define "home-assistant.gitopsEnabled" -}}
-{{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled -}}true{{- end -}}
+{{- define "home-assistant.gitops.podSecurityContext" -}}
+{{- $ctx := mergeOverwrite (dict "fsGroup" 1000) (.Values.podSecurityContext | default dict) -}}
+{{- if .Values.homeAssistant.gitops.enabled -}}
+{{- toYaml $ctx -}}
+{{- else if not (empty .Values.podSecurityContext) -}}
+{{- toYaml .Values.podSecurityContext -}}
 {{- end -}}
-
-{{- define "home-assistant.isGitOpsSSH" -}}
-{{- $found := dict -}}
-{{- range .Values.homeAssistant.initContainer.tasks.gitops.repos -}}
-  {{- if regexMatch `^(git@|ssh://)` (.url | default "") -}}
-    {{- $_ := set $found "v" true -}}
-  {{- end -}}
-{{- end -}}
-{{- if $found.v -}}true{{- end -}}
 {{- end -}}
 
 {{- define "home-assistant.initContainer.securityContext" -}}
@@ -105,57 +100,6 @@ securityContext:
 
 {{- define "home-assistant.configmapName.initScripts" -}}
 {{- include "home-assistant.fullname" . }}-init-scripts
-{{- end -}}
-
-{{- define "home-assistant.configmapName.gitops" -}}
-{{- include "home-assistant.fullname" . }}-gitops
-{{- end -}}
-
-{{- define "home-assistant.gitopsSignersEnabled" -}}
-{{- $found := dict -}}
-{{- range .Values.homeAssistant.initContainer.tasks.gitops.repos -}}
-  {{- if .allowedSigners -}}
-    {{- $_ := set $found "v" true -}}
-  {{- end -}}
-{{- end -}}
-{{- if $found.v -}}true{{- end -}}
-{{- end -}}
-
-{{- define "home-assistant.configmapName.gitopsSigners" -}}
-{{- include "home-assistant.fullname" . }}-gitops-signers
-{{- end -}}
-
-{{- define "home-assistant.initContainer.gitopsInit" -}}
-{{- if include "home-assistant.gitopsEnabled" . -}}
-{{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops -}}
-{{- $isGitOpsSSH := include "home-assistant.isGitOpsSSH" . -}}
-- name: gitops-init
-  {{- include "home-assistant.initContainer.baseFields" . | nindent 2 }}
-  command:
-    - sh
-    - /run/gitops/gitops-setup
-  {{- with .Values.homeAssistant.initContainer.resources }}
-  resources:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-  volumeMounts:
-    - name: config
-      mountPath: /config
-    - name: gitops-configmap
-      mountPath: /run/gitops
-      readOnly: true
-    {{- if $isGitOpsSSH }}
-    - name: gitops-ssh-key
-      mountPath: /run/secrets/gitops/ssh_key
-      subPath: {{ $gitops.ssh.secretKey }}
-      readOnly: true
-    {{- end }}
-    {{- if include "home-assistant.gitopsSignersEnabled" . }}
-    - name: gitops-signers-configmap
-      mountPath: /run/gitops-signers
-      readOnly: true
-    {{- end }}
-{{- end -}}
 {{- end -}}
 
 {{- define "home-assistant.initContainer.bootstrap" -}}
@@ -231,12 +175,17 @@ securityContext:
 {{- end -}}
 
 {{- define "home-assistant.initContainers" -}}
-{{- include "home-assistant.initContainer.gitopsInit" . }}
 {{- include "home-assistant.initContainer.bootstrap" . }}
 {{- with .Values.initContainers }}
 {{- toYaml . | nindent 0 }}
 {{- end }}
 {{- include "home-assistant.initContainer.checkConfig" . }}
+{{- end -}}
+
+{{- define "home-assistant.mainContainer.env" -}}
+{{- with .Values.env }}
+{{- toYaml . }}
+{{- end }}
 {{- end -}}
 
 {{- define "home-assistant.volumes" -}}
@@ -256,26 +205,6 @@ securityContext:
     name: {{ include "home-assistant.configmapName.initScripts" . }}
     defaultMode: 0644
 {{- end }}
-{{- if include "home-assistant.gitopsEnabled" . }}
-{{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops -}}
-{{- $isGitOpsSSH := include "home-assistant.isGitOpsSSH" . }}
-- name: gitops-configmap
-  configMap:
-    name: {{ include "home-assistant.configmapName.gitops" . }}
-    defaultMode: 0644
-{{- if $isGitOpsSSH }}
-- name: gitops-ssh-key
-  secret:
-    secretName: {{ $gitops.ssh.secretName }}
-    defaultMode: 0400
-{{- end }}
-{{- if include "home-assistant.gitopsSignersEnabled" . }}
-- name: gitops-signers-configmap
-  configMap:
-    name: {{ include "home-assistant.configmapName.gitopsSigners" . }}
-    defaultMode: 0644
-{{- end }}
-{{- end }}
 {{- if .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.enabled }}
 - name: {{ .Values.homeAssistant.initContainer.tasks.setupSecretsYaml.secretName }}
   secret:
@@ -289,6 +218,186 @@ securityContext:
 {{- with .Values.extraVolumes }}
 {{- toYaml . | nindent 0 }}
 {{- end }}
+{{- if .Values.homeAssistant.gitops.enabled }}
+{{- $gitops := .Values.homeAssistant.gitops }}
+- name: gitops-runtime
+  configMap:
+    name: {{ include "home-assistant.configmapName.gitops" . }}
+    items:
+      - key: config.json
+        path: config.json
+        mode: 0644
+      - key: gitconfig
+        path: gitconfig
+        mode: 0644
+      {{- if $gitops.credentials.ssh.secretName }}
+      - key: ssh_config
+        path: ssh_config
+        mode: 0644
+      - key: known_hosts
+        path: known_hosts
+        mode: 0644
+      {{- end }}
+      {{- range $gitops.repos }}
+      {{- $repo := . }}
+      {{- $httpsEntry := dict }}
+      {{- range $gitops.credentials.https }}
+      {{- if contains .host $repo.url }}
+      {{- $httpsEntry = . }}
+      {{- end }}
+      {{- end }}
+      {{- if or $httpsEntry.host $repo.allowedSigners }}
+      - key: {{ $repo.name }}.gitconfig
+        path: {{ $repo.name }}/gitconfig
+        mode: 0644
+      {{- end }}
+      {{- if $httpsEntry.host }}
+      - key: {{ $repo.name }}.credential
+        path: {{ $repo.name }}/credential
+        mode: 0755
+      {{- end }}
+      {{- if $repo.allowedSigners }}
+      - key: {{ $repo.name }}.allowed-signers
+        path: {{ $repo.name }}/allowed-signers
+        mode: 0644
+      {{- end }}
+      {{- end }}
+{{- if $gitops.credentials.ssh.secretName }}
+- name: gitops-ssh-key
+  secret:
+    secretName: {{ $gitops.credentials.ssh.secretName }}
+    defaultMode: 0440
+{{- end }}
+{{- range $gitops.credentials.https }}
+- name: gitops-https-{{ .host | replace "." "-" }}
+  secret:
+    secretName: {{ .secretName }}
+    defaultMode: 0440
+{{- end }}
+- name: gitops-workspace
+  emptyDir: {}
+{{- end }}
+{{- end -}}
+
+{{- define "home-assistant.configmapName.gitops" -}}
+{{- include "home-assistant.fullname" . }}-gitops
+{{- end -}}
+
+{{- define "home-assistant.gitops.image" -}}
+{{- include "home-assistant.renderImage" .Values.homeAssistant.gitops.image }}
+{{- end -}}
+
+{{- define "home-assistant.gitops.configJson" -}}
+{{- $gitops := .Values.homeAssistant.gitops -}}
+{{- $repos := list -}}
+{{- range $gitops.repos -}}
+{{- $repo := dict "name" .name "url" .url "verifyCommit" (default false .verifyCommit) -}}
+{{- if .commandQueueSize -}}{{- $_ := set $repo "commandQueueSize" .commandQueueSize -}}{{- end -}}
+{{- $repos = append $repos $repo -}}
+{{- end -}}
+{{- $cfg := dict "runtimeDir" "/run/gitops-runtime" "workDir" "/tmp/gitops" "workspaceDir" "/gitops/repos" "repos" $repos -}}
+{{- if $gitops.webhook.haWebhookId -}}
+{{- $notification := dict "type" "ha-webhook" "url" (printf "http://localhost:8123/api/webhook/%s" $gitops.webhook.haWebhookId) -}}
+{{- if $gitops.webhook.queueSize -}}{{- $_ := set $notification "queueSize" $gitops.webhook.queueSize -}}{{- end -}}
+{{- if $gitops.webhook.maxBatchSize -}}{{- $_ := set $notification "maxBatchSize" $gitops.webhook.maxBatchSize -}}{{- end -}}
+{{- if $gitops.webhook.batchInterval -}}{{- $_ := set $notification "batchInterval" $gitops.webhook.batchInterval -}}{{- end -}}
+{{- $_ := set $cfg "notification" $notification -}}
+{{- end -}}
+{{- $cfg | toJson -}}
+{{- end -}}
+
+{{- define "home-assistant.gitops.gitconfig" -}}
+{{- $gitops := .Values.homeAssistant.gitops -}}
+{{- range $gitops.repos -}}
+{{- $repo := . -}}
+{{- $hasHttps := false -}}
+{{- range $gitops.credentials.https -}}
+{{- if contains .host $repo.url -}}{{- $hasHttps = true -}}{{- end -}}
+{{- end -}}
+{{- if or $hasHttps $repo.allowedSigners }}
+[includeIf "hasconfig:remote.*.url:{{ $repo.url }}"]
+  path = /run/gitops-runtime/{{ $repo.name }}/gitconfig
+{{ end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.gitops.repoGitconfig" -}}
+{{- $repo := .repo -}}
+{{- $gitops := .gitops -}}
+{{- range $gitops.credentials.https -}}
+{{- if contains .host $repo.url -}}
+[credential "https://{{ .host }}"]
+  helper = /run/gitops-runtime/{{ $repo.name }}/credential
+{{ end -}}
+{{- end -}}
+{{- if $repo.allowedSigners -}}
+[gpg]
+  format = ssh
+[gpg "ssh"]
+  allowedSignersFile = /run/gitops-runtime/{{ $repo.name }}/allowed-signers
+{{- end -}}
+{{- end -}}
+
+{{- define "home-assistant.gitops.credentialHelper" -}}
+{{- $secretKey := default "token" .cred.secretKey -}}
+#!/bin/sh
+[ "$1" = get ] || exit 0
+printf 'username=%s\npassword=%s\n' '{{ .cred.login | default "x-access-token" }}' "$(cat /run/secrets/gitops-https/{{ .cred.host }}/{{ $secretKey }})"
+{{- end -}}
+
+{{- define "home-assistant.gitops.sshConfig" -}}
+{{- $gitops := .Values.homeAssistant.gitops -}}
+Host *
+  IdentityFile /run/secrets/gitops-ssh-key/{{ $gitops.credentials.ssh.secretKey }}
+  UserKnownHostsFile /run/gitops-runtime/known_hosts
+  StrictHostKeyChecking yes
+  IdentitiesOnly yes
+  StrictModes no
+{{- end -}}
+
+{{- define "home-assistant.sidecar.gitops" -}}
+{{- $gitops := .Values.homeAssistant.gitops -}}
+- name: gitops
+  image: {{ include "home-assistant.gitops.image" . }}
+  imagePullPolicy: {{ $gitops.image.pullPolicy }}
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  ports:
+    - name: gitops
+      containerPort: {{ $gitops.port }}
+      protocol: TCP
+  env:
+    - name: GITOPS_PORT
+      value: {{ $gitops.port | quote }}
+    - name: GITOPS_CONFIG_FILE
+      value: /run/gitops-runtime/config.json
+  {{- with .Values.homeAssistant.gitops.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  volumeMounts:
+    - name: gitops-runtime
+      mountPath: /run/gitops-runtime
+      readOnly: true
+    - name: gitops-workspace
+      mountPath: /gitops/repos
+    {{- if $gitops.credentials.ssh.secretName }}
+    - name: gitops-ssh-key
+      mountPath: /run/secrets/gitops-ssh-key
+      readOnly: true
+    {{- end }}
+    {{- range $gitops.credentials.https }}
+    {{- $secretKey := default "token" .secretKey }}
+    - name: gitops-https-{{ .host | replace "." "-" }}
+      mountPath: /run/secrets/gitops-https/{{ .host }}/{{ $secretKey }}
+      subPath: {{ $secretKey }}
+      readOnly: true
+    {{- end }}
 {{- end -}}
 
 {{- define "home-assistant.containerPorts" -}}

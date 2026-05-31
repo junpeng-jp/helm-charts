@@ -27,6 +27,10 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
       serviceAccountName: {{ include "home-assistant.serviceAccountName" . }}
+      {{- with include "home-assistant.gitops.podSecurityContext" . | trim }}
+      securityContext:
+        {{- . | nindent 8 }}
+      {{- end }}
       {{- with .Values.global.image.pullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -45,9 +49,9 @@ spec:
           ports:
             {{- . | nindent 12 }}
           {{- end }}
-          {{- with .Values.env }}
+          {{- with include "home-assistant.mainContainer.env" . | trim }}
           env:
-            {{- toYaml . | nindent 12 }}
+            {{- . | nindent 12 }}
           {{- end }}
           {{- if .Values.startupProbe.enabled }}
           startupProbe:
@@ -72,16 +76,14 @@ spec:
               subPath: configuration.yaml
               readOnly: true
             {{- end }}
-            {{- if include "home-assistant.isGitOpsSSH" . }}
-            - name: gitops-ssh-key
-              mountPath: /run/secrets/gitops/ssh_key
-              subPath: {{ .Values.homeAssistant.initContainer.tasks.gitops.ssh.secretKey }}
-              readOnly: true
-            {{- end }}
             {{- range .Values.secretVolumeMounts }}
             - name: {{ .name | default .secretName }}
               mountPath: /run/secrets/{{ .mountPath | default .secretName }}
               readOnly: true
+            {{- end }}
+            {{- if .Values.homeAssistant.gitops.enabled }}
+            - name: gitops-workspace
+              mountPath: /gitops/repos
             {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -90,6 +92,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- if .Values.homeAssistant.gitops.enabled }}
+        {{- include "home-assistant.sidecar.gitops" . | nindent 8 }}
+        {{- end }}
       {{- with include "home-assistant.volumes" . | trim }}
       volumes:
         {{- . | nindent 8 }}

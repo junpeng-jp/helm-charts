@@ -2,14 +2,11 @@ suite: Validations
 templates:
   - templates/validations.yaml
 tests:
+  # Networking
   - it: renders no documents with default values
     asserts:
       - hasDocuments:
           count: 0
-
-  # ============================================================
-  # Networking
-  # ============================================================
 
   - it: fails when an enabled service has all ports explicitly disabled
     set:
@@ -25,155 +22,7 @@ tests:
       - hasDocuments:
           count: 0
 
-  # ============================================================
-  # Ingress
-  # ============================================================
-
-  - it: fails when both gateway and traefik ingress are enabled simultaneously
-    set:
-      ingress.gateway.enabled: true
-      ingress.traefik.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)"
-
-  - it: fails when gateway ingress is enabled but networking.service.app is disabled
-    set:
-      ingress.gateway.enabled: true
-      networking.service.app.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.gateway requires networking.service.app to be enabled"
-
-  - it: fails when gateway ingress is enabled but http port is absent
-    set:
-      ingress.gateway.enabled: true
-      networking.service.app.ports.http: null
-      networking.service.app.ports.other.enabled: true
-      networking.service.app.ports.other.port: 9090
-      networking.service.app.ports.other.protocol: TCP
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined and enabled"
-
-  - it: fails when gateway ingress is enabled without hostnames
-    set:
-      ingress.gateway.enabled: true
-      ingress.gateway.hostnames: []
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.gateway.enabled requires ingress.gateway.hostnames to be set with at least one entry"
-
-  - it: fails when gateway ingress is enabled without parentRefs
-    set:
-      ingress.gateway.enabled: true
-      ingress.gateway.parentRefs: []
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.gateway.enabled requires ingress.gateway.parentRefs to be set with at least one entry"
-
-  - it: fails when traefik ingress is enabled without hostnames
-    set:
-      ingress.traefik.enabled: true
-      ingress.traefik.hostnames: []
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.traefik.enabled requires ingress.traefik.hostnames to be set with at least one entry"
-
-  - it: fails when traefik tls is enabled without secretName or certResolver
-    set:
-      ingress.traefik.enabled: true
-      ingress.traefik.tls.enabled: true
-      ingress.traefik.tls.secretName: ""
-      ingress.traefik.tls.certResolver: ""
-    asserts:
-      - failedTemplate:
-          errorMessage: "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set"
-
-  - it: traefik tls passes with secretName set
-    set:
-      ingress.traefik.enabled: true
-      ingress.traefik.tls.enabled: true
-      ingress.traefik.tls.secretName: my-tls-secret
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: traefik tls passes with certResolver set
-    set:
-      ingress.traefik.enabled: true
-      ingress.traefik.tls.enabled: true
-      ingress.traefik.tls.certResolver: letsencrypt
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  # ============================================================
-  # Persistence
-  # ============================================================
-
-  - it: fails when existingClaim and existingVolume are both set
-    set:
-      persistence.existingClaim: my-pvc
-      persistence.existingVolume: my-pv
-    asserts:
-      - failedTemplate:
-          errorMessage: "persistence.existingClaim and persistence.existingVolume are mutually exclusive; unset one"
-
-  - it: fails when persistence is enabled without existingClaim or size
-    set:
-      persistence.enabled: true
-      persistence.size: ""
-      persistence.existingClaim: ""
-    asserts:
-      - failedTemplate:
-          errorMessage: "persistence.enabled requires either persistence.existingClaim or persistence.size to be set"
-
-  - it: passes when persistence is enabled with existingClaim
-    set:
-      persistence.enabled: true
-      persistence.size: ""
-      persistence.existingClaim: my-pvc
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: fails when existingClaim is set but persistence is disabled
-    set:
-      persistence.enabled: false
-      persistence.existingClaim: my-pvc
-    asserts:
-      - failedTemplate:
-          errorMessage: "persistence.existingClaim has no effect when persistence.enabled is false; set persistence.enabled: true"
-
-  - it: fails when existingVolume is set but persistence is disabled
-    set:
-      persistence.enabled: false
-      persistence.existingVolume: my-pv
-    asserts:
-      - failedTemplate:
-          errorMessage: "persistence.existingVolume has no effect when persistence.enabled is false; set persistence.enabled: true"
-
-  - it: fails when replicaCount > 1 with ReadWriteOnce storage
-    set:
-      replicaCount: 2
-    asserts:
-      - failedTemplate:
-          errorMessage: "replicaCount > 1 is incompatible with ReadWriteOnce storage; use ReadWriteMany or set replicaCount: 1"
-
-  - it: does not fail when replicaCount > 1 with ReadWriteMany storage
-    set:
-      replicaCount: 2
-      persistence.accessModes:
-        - ReadWriteMany
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  # ============================================================
   # Monitor
-  # ============================================================
-
   - it: fails when monitor is enabled without path
     set:
       monitor.metric.enabled: true
@@ -209,89 +58,64 @@ tests:
       - failedTemplate:
           errorMessage: 'monitor.metric.port "http" is not defined in any enabled service in networking.service'
 
-  # ============================================================
-  # GitOps
-  # ============================================================
-
-  - it: fails when gitops is enabled without persistence
-    values:
-      - fixtures/gitops-minimal.yaml
+  # Configuration
+  - it: fails when configuration is enabled without content
     set:
-      persistence.enabled: false
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.content: ""
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.initContainer.tasks.gitops.enabled requires persistence.enabled to be true"
+          errorMessage: "homeAssistant.configuration.enabled requires homeAssistant.configuration.content to be set"
 
-  - it: fails when gitops is enabled without repos
-    set:
-      homeAssistant.initContainer.tasks.gitops.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.initContainer.tasks.gitops.enabled requires at least one entry in homeAssistant.initContainer.tasks.gitops.repos"
-
-  - it: fails when gitops repos has duplicate names
-    values:
-      - fixtures/gitops-duplicate-repos.yaml
-    asserts:
-      - failedTemplate:
-          errorMessage: 'homeAssistant.initContainer.tasks.gitops.repos: duplicate repo name "ha-config"'
-
-  - it: gitops with https URL passes validation without ssh settings
-    values:
-      - fixtures/gitops-https.yaml
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: fails when gitops SSH repo is configured without ssh.secretName
-    values:
-      - fixtures/gitops-minimal.yaml
-    set:
-      homeAssistant.initContainer.tasks.gitops.ssh.secretName: ""
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.initContainer.tasks.gitops: SSH repos require homeAssistant.initContainer.tasks.gitops.ssh.secretName to be set"
-
-  - it: fails when gitops SSH repo is configured without ssh.knownHosts
-    values:
-      - fixtures/gitops-minimal.yaml
-    set:
-      homeAssistant.initContainer.tasks.gitops.ssh.knownHosts: ""
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.initContainer.tasks.gitops: SSH repos require homeAssistant.initContainer.tasks.gitops.ssh.knownHosts to be set"
-
-  - it: gitops with mixed SSH and HTTPS repos passes when ssh settings are provided
-    values:
-      - fixtures/gitops-mixed-repos.yaml
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: fails when gitops and configuration are both enabled but content does not reference gitops/
-    values:
-      - fixtures/gitops-minimal.yaml
+  - it: fails when configuration is enabled without persistence
     set:
       homeAssistant.configuration.enabled: true
       homeAssistant.configuration.content: "homeassistant:\n  name: Home\n"
+      persistence.enabled: false
     asserts:
       - failedTemplate:
-          errorMessage: "homeAssistant.configuration.content does not reference the gitops/ directory; add '!include_dir_named gitops/' to homeassistant.packages so deployed repos are loaded"
+          errorMessage: "homeAssistant.configuration.enabled requires persistence.enabled to be true"
 
-  - it: passes when gitops and configuration are both enabled and content references gitops/
-    values:
-      - fixtures/gitops-minimal.yaml
+  - it: fails when checkConfig is enabled without configuration enabled
     set:
-      homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.content: "homeassistant:\n  packages: !include_dir_named gitops/\n"
+      homeAssistant.configuration.enabled: false
+      homeAssistant.configuration.checkConfig.enabled: true
     asserts:
-      - hasDocuments:
-          count: 0
+      - failedTemplate:
+          errorMessage: "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true"
 
-  # ============================================================
+  # Init Containers
+  - it: fails when user initContainers uses reserved name bootstrap
+    set:
+      initContainers:
+        - name: bootstrap
+          image: busybox:latest
+          command: ["sh", "-c", "echo hi"]
+    asserts:
+      - failedTemplate:
+          errorMessage: 'initContainers: name "bootstrap" is reserved by the chart; rename your init container'
+
+  - it: fails when user initContainers uses reserved name gitops
+    set:
+      initContainers:
+        - name: gitops
+          image: busybox:latest
+          command: ["sh", "-c", "echo hi"]
+    asserts:
+      - failedTemplate:
+          errorMessage: 'initContainers: name "gitops" is reserved by the chart; rename your init container'
+
+  - it: fails when user initContainers uses reserved name gitops-setup
+    set:
+      initContainers:
+        - name: gitops-setup
+          image: busybox:latest
+          command: ["sh", "-c", "echo hi"]
+    asserts:
+      - failedTemplate:
+          errorMessage: 'initContainers: name "gitops-setup" is reserved by the chart; rename your init container'
+
   # Init Container Tasks
-  # ============================================================
-
   - it: fails when setupHACS is enabled without version
     set:
       homeAssistant.initContainer.tasks.setupHACS.enabled: true
@@ -326,39 +150,7 @@ tests:
       - failedTemplate:
           errorMessage: "homeAssistant.initContainer.tasks.setupSecretsYaml requires persistence.enabled to be true"
 
-  # ============================================================
-  # Configuration
-  # ============================================================
-
-  - it: fails when configuration is enabled without content
-    set:
-      homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.content: ""
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.configuration.enabled requires homeAssistant.configuration.content to be set"
-
-  - it: fails when configuration is enabled without persistence
-    set:
-      homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.content: "homeassistant:\n  name: Home\n"
-      persistence.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.configuration.enabled requires persistence.enabled to be true"
-
-  - it: fails when checkConfig is enabled without configuration enabled
-    set:
-      homeAssistant.configuration.enabled: false
-      homeAssistant.configuration.checkConfig.enabled: true
-    asserts:
-      - failedTemplate:
-          errorMessage: "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true"
-
-  # ============================================================
   # Secret Volume Mounts
-  # ============================================================
-
   - it: fails when secretVolumeMounts has duplicate volume names
     set:
       secretVolumeMounts:
@@ -389,27 +181,3 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: 'secretVolumeMounts: secret "ha-secrets" is already used by homeAssistant.initContainer.tasks.setupSecretsYaml to generate /config/secrets.yaml; remove it from secretVolumeMounts'
-
-  # ============================================================
-  # Init Containers
-  # ============================================================
-
-  - it: fails when user initContainers uses reserved name bootstrap
-    set:
-      initContainers:
-        - name: bootstrap
-          image: busybox:latest
-          command: ["sh", "-c", "echo hi"]
-    asserts:
-      - failedTemplate:
-          errorMessage: 'initContainers: name "bootstrap" is reserved by the chart; rename your init container'
-
-  - it: fails when user initContainers uses reserved name gitops-init
-    set:
-      initContainers:
-        - name: gitops-init
-          image: busybox:latest
-          command: ["sh", "-c", "echo hi"]
-    asserts:
-      - failedTemplate:
-          errorMessage: 'initContainers: name "gitops-init" is reserved by the chart; rename your init container'

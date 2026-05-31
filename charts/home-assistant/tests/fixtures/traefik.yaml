@@ -1,0 +1,7 @@
+ingress:
+  traefik:
+    enabled: true
+    entryPoints:
+      - websecure
+    hostnames:
+      - ha.example.com

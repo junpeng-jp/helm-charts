@@ -38,10 +38,9 @@ tests:
 
   - it: renders IngressRoute with host rule, entryPoints, and certResolver TLS when traefik is enabled
     template: templates/ingressroute.yaml
+    values:
+      - fixtures/traefik.yaml
     set:
-      ingress.traefik.enabled: true
-      ingress.traefik.entryPoints[0]: websecure
-      ingress.traefik.hostnames[0]: ha.example.com
       ingress.traefik.tls.enabled: true
       ingress.traefik.tls.certResolver: letsencrypt
     asserts:
@@ -63,10 +62,9 @@ tests:
 
   - it: renders IngressRoute with secretName TLS when tls.secretName is set
     template: templates/ingressroute.yaml
+    values:
+      - fixtures/traefik.yaml
     set:
-      ingress.traefik.enabled: true
-      ingress.traefik.entryPoints[0]: websecure
-      ingress.traefik.hostnames[0]: ha.example.com
       ingress.traefik.tls.enabled: true
       ingress.traefik.tls.secretName: my-tls-secret
     asserts:
@@ -80,10 +78,9 @@ tests:
 
   - it: renders middleware entries in IngressRoute with and without namespace
     template: templates/ingressroute.yaml
+    values:
+      - fixtures/traefik.yaml
     set:
-      ingress.traefik.enabled: true
-      ingress.traefik.entryPoints[0]: websecure
-      ingress.traefik.hostnames[0]: ha.example.com
       ingress.traefik.middlewares:
         - name: my-auth
         - name: my-ns-auth

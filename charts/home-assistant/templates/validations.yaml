@@ -158,41 +158,75 @@
 # GitOps
 # ------------------------------------------------------------
 
-{{- if .Values.homeAssistant.initContainer.tasks.gitops.enabled }}
+{{- if .Values.homeAssistant.gitops.enabled }}
+{{- $gitops := .Values.homeAssistant.gitops }}
+
 # requires persistence
 {{- if not .Values.persistence.enabled }}
-{{- fail "homeAssistant.initContainer.tasks.gitops.enabled requires persistence.enabled to be true" }}
+{{- fail "homeAssistant.gitops.enabled requires persistence.enabled to be true" }}
 {{- end }}
 
-# at least one repo must be configured
-{{- if empty .Values.homeAssistant.initContainer.tasks.gitops.repos }}
-{{- fail "homeAssistant.initContainer.tasks.gitops.enabled requires at least one entry in homeAssistant.initContainer.tasks.gitops.repos" }}
-{{- end }}
-
-# repo names must be unique
-{{- $seenRepoNames := dict }}
-{{- range .Values.homeAssistant.initContainer.tasks.gitops.repos }}
-{{- if index $seenRepoNames .name }}
-{{- fail (printf "homeAssistant.initContainer.tasks.gitops.repos: duplicate repo name %q" .name) }}
-{{- end }}
-{{- $_ := set $seenRepoNames .name true }}
-{{- end }}
-
-# SSH repos require ssh.secretName and ssh.knownHosts
-{{- $hasSSHRepo := false }}
-{{- range .Values.homeAssistant.initContainer.tasks.gitops.repos }}
+# SSH repos require ssh.secretName
+{{- range $gitops.repos }}
 {{- if regexMatch `^(git@|ssh://)` .url }}
-{{- $hasSSHRepo = true }}
+{{- if empty $gitops.credentials.ssh.secretName }}
+{{- fail (printf "homeAssistant.gitops.repos[%s]: SSH URL requires homeAssistant.gitops.credentials.ssh.secretName to be set" .name) }}
 {{- end }}
 {{- end }}
-{{- if $hasSSHRepo }}
-{{- if empty .Values.homeAssistant.initContainer.tasks.gitops.ssh.secretName }}
-{{- fail "homeAssistant.initContainer.tasks.gitops: SSH repos require homeAssistant.initContainer.tasks.gitops.ssh.secretName to be set" }}
 {{- end }}
-{{- if empty .Values.homeAssistant.initContainer.tasks.gitops.ssh.knownHosts }}
-{{- fail "homeAssistant.initContainer.tasks.gitops: SSH repos require homeAssistant.initContainer.tasks.gitops.ssh.knownHosts to be set" }}
+
+# HTTPS repos require a matching https[].host entry
+{{- range $gitops.repos }}
+{{- if regexMatch `^https://` .url }}
+{{- $repoURL := .url }}
+{{- $repoName := .name }}
+{{- $matched := false }}
+{{- range $gitops.credentials.https }}
+{{- if contains .host $repoURL }}
+{{- $matched = true }}
 {{- end }}
 {{- end }}
+{{- if not $matched }}
+{{- fail (printf "homeAssistant.gitops.repos[%s]: HTTPS URL %q has no matching entry in homeAssistant.gitops.credentials.https" $repoName $repoURL) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+# verifyCommit: true requires allowedSigners
+{{- range $gitops.repos }}
+{{- if and .verifyCommit (empty .allowedSigners) }}
+{{- fail (printf "homeAssistant.gitops.repos[%s]: verifyCommit: true requires allowedSigners to be set" .name) }}
+{{- end }}
+{{- end }}
+
+# ssh.secretName requires knownHosts
+{{- if and $gitops.credentials.ssh.secretName (empty $gitops.credentials.ssh.knownHosts) }}
+{{- fail "homeAssistant.gitops.credentials.ssh.secretName requires homeAssistant.gitops.credentials.ssh.knownHosts to be set" }}
+{{- end }}
+
+# ssh.secretKey must not be empty when ssh.secretName is set
+{{- if and $gitops.credentials.ssh.secretName (empty $gitops.credentials.ssh.secretKey) }}
+{{- fail "homeAssistant.gitops.credentials.ssh.secretKey must not be empty when homeAssistant.gitops.credentials.ssh.secretName is set" }}
+{{- end }}
+
+# no duplicate repos[].name
+{{- $seenRepos := dict }}
+{{- range $gitops.repos }}
+{{- if index $seenRepos .name }}
+{{- fail (printf "homeAssistant.gitops.repos: duplicate name %q; each repo must have a unique name" .name) }}
+{{- end }}
+{{- $_ := set $seenRepos .name true }}
+{{- end }}
+
+# no duplicate https[].host
+{{- $seenHosts := dict }}
+{{- range $gitops.credentials.https }}
+{{- if index $seenHosts .host }}
+{{- fail (printf "homeAssistant.gitops.credentials.https: duplicate host %q; each HTTPS entry must have a unique host" .host) }}
+{{- end }}
+{{- $_ := set $seenHosts .host true }}
+{{- end }}
+
 {{- end }}
 
 # ------------------------------------------------------------
@@ -241,13 +275,6 @@
 {{- fail "homeAssistant.configuration.checkConfig.enabled requires homeAssistant.configuration.enabled to be true" }}
 {{- end }}
 
-# gitops + configuration: content should reference the gitops/ directory
-{{- if and (include "home-assistant.gitopsEnabled" .) .Values.homeAssistant.configuration.enabled }}
-{{- if not (contains "gitops" .Values.homeAssistant.configuration.content) }}
-{{- fail "homeAssistant.configuration.content does not reference the gitops/ directory; add '!include_dir_named gitops/' to homeassistant.packages so deployed repos are loaded" }}
-{{- end }}
-{{- end }}
-
 # ------------------------------------------------------------
 # Secret Volume Mounts
 # ------------------------------------------------------------
@@ -276,7 +303,7 @@
 # ------------------------------------------------------------
 
 # user-supplied initContainers must not use names reserved by the chart
-{{- $reservedInitNames := list "gitops-init" "gitops-check" "bootstrap" "check-config" }}
+{{- $reservedInitNames := list "gitops" "gitops-setup" "bootstrap" "check-config" }}
 {{- range .Values.initContainers }}
 {{- if has .name $reservedInitNames }}
 {{- fail (printf "initContainers: name %q is reserved by the chart; rename your init container" .name) }}

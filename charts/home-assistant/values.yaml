@@ -33,10 +33,10 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Extra init containers injected after the chart-managed init containers (gitops-setup, bootstrap)
+# Extra init containers injected after the chart-managed init containers (bootstrap)
 # and before Home Assistant starts. Use this for tasks that depend on bootstrap having already run
 # (e.g. secrets.yaml written, HACS installed, configuration.yaml in place).
-# Names "gitops-setup", "bootstrap", and "check-config" are reserved by the chart.
+# Names "gitops", "bootstrap", and "check-config" are reserved by the chart.
 initContainers: []
 
 env:
@@ -99,9 +99,13 @@ resources:
     memory: 1Gi
     # cpu limit intentionally omitted - Home Assistant automations can cause brief CPU spikes
 
-# podSecurityContext and containerSecurityContext are intentionally omitted.
+# containerSecurityContext is intentionally omitted.
 # home-assistant uses s6-overlay as its init system, which must start as root and write to /run.
 # Setting runAsNonRoot or readOnlyRootFilesystem on the main container causes an immediate crash.
+podSecurityContext: {}
+  # When gitops is enabled, fsGroup: 1000 is injected automatically so the non-root
+  # gitops sidecar can write to the shared workspace emptyDir. Override here if needed.
+  # fsGroup: 1000
 
 pod:
   annotations: {}
@@ -197,56 +201,6 @@ homeAssistant:
         enabled: false
         secretName: ""  # required when enabled is true
 
-      # Sets up an SSH identity and bare git mirrors for gitops-managed configuration.
-      # Requires persistence.enabled.
-      #
-      # The gitops CLI (clone|stage|deploy|get) is bundled in the ConfigMap. The init
-      # container installs it to /config/.gitops/run/bin/gitops on the PVC so it is
-      # available at runtime from shell commands and HA automations.
-      #
-      # Volatile setup files (binary, SSH config, allowedSigners) are written to
-      # /config/.gitops/run/ and replaced on every pod start. State files written by
-      # the CLI are kept under /config/.gitops/state/ and survive pod restarts.
-      #
-      # Workflow:
-      #   1. On first use, call 'gitops clone <name>' at runtime to create the bare
-      #      mirror at /config/gitops/<name>.git. Subsequent pod starts update the
-      #      mirror automatically via 'gitops stage' or 'gitops deploy'.
-      #   2. Call 'gitops stage <name> [--branch=X|--tag=X]' to fetch, create a
-      #      candidate worktree, and validate it with 'hass --script check_config'.
-      #      Result is written to staging state under /config/.gitops/state/.
-      #   3. Call 'gitops deploy <name>' to promote the staged worktree to
-      #      /config/packages/gitops/<name> and prune all previous worktrees.
-      #      Requires a passing stage; use --force to override.
-      #   4. Call 'gitops get <key>' (e.g. active.<repo>.ref, staging.<repo>.status)
-      #      to read persisted state.
-      gitops:
-        enabled: false
-
-        # Whitelisted repositories the gitops workflow can pull from.
-        # Each repo is cloned as a bare mirror on every pod start. The gitops CLI
-        # operates on repos by name at runtime.
-        repos: []
-        # - name: ha-config        # required: repo identifier (alphanumeric, hyphens, underscores)
-        #   url: git@github.com:your-org/ha-config.git  # required: git remote URL
-        #   allowedSigners: |      # optional: inline SSH public keys trusted to sign commits/tags
-        #     user@example.com ssh-ed25519 AAAAC3...
-
-        ssh:
-          # SSH identity used for all repos. Required only when any repo URL uses
-          # the git@ or ssh:// scheme. Not needed for https:// URLs.
-
-          # Name of a Kubernetes Secret containing the SSH deploy key.
-          # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
-          secretName: ""
-
-          # Key within the Secret that holds the private key. Defaults to 'id_ed25519'.
-          secretKey: "id_ed25519"
-
-          # Raw known_hosts content for verifying the git host's identity.
-          # Obtain with: ssh-keyscan <hostname>
-          knownHosts: ""
-
   # Manages /config/configuration.yaml as a read-only ConfigMap mount. Requires persistence.enabled.
   # See: https://www.home-assistant.io/docs/configuration/
   #
@@ -281,3 +235,39 @@ homeAssistant:
         requests:
           memory: 256Mi
           cpu: 100m
+
+  gitops:
+    enabled: false
+    port: 9001
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 50m
+    image:
+      registry: ghcr.io
+      repository: junpeng-jp/gitops-sidecar
+      tag: "latest"
+      digest: ""
+      pullPolicy: IfNotPresent
+    credentials:
+      ssh:
+        secretName: ""
+        secretKey: id_ed25519
+        knownHosts: ""
+      https: []
+      # - host: github.com
+      #   login: x-access-token
+      #   secretName: ha-github-token
+      #   secretKey: token
+    repos: []
+    # - name: ha-config
+    #   url: "git@github.com:org/ha-config.git"
+    #   allowedSigners: |
+    #     admin@example.com namespaces="git" ssh-ed25519 AAAAC3...
+    #   verifyCommit: false
+    #   commandQueueSize: 16
+    webhook:
+      haWebhookId: ""
+      queueSize: 0
+      maxBatchSize: 0
+      batchInterval: ""

@@ -1,8 +1,17 @@
+persistence:
+  enabled: true
+  size: 5Gi
+
 homeAssistant:
-  initContainer:
-    tasks:
-      gitops:
-        enabled: true
-        repos:
-          - name: helm-charts
-            url: "https://github.com/junpeng-jp/helm-charts.git"
+  gitops:
+    enabled: true
+    credentials:
+      https:
+        - host: github.com
+          login: x-access-token
+          secretName: ha-github-token
+          secretKey: token
+    repos:
+      - name: ha-config
+        url: "https://github.com/org/ha-config.git"
+        verifyCommit: false

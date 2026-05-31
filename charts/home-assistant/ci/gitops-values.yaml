@@ -8,10 +8,9 @@ persistence:
   size: 1Gi
 
 homeAssistant:
-  initContainer:
-    tasks:
-      gitops:
-        enabled: true
-        repos:
-          - name: helm-charts
-            url: "https://github.com/junpeng-jp/helm-charts.git"
+  gitops:
+    enabled: true
+    repos: []
+    webhook:
+      secretName: ha-gitops-webhook
+      secretKey: secret

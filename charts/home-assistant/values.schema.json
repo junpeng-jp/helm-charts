@@ -128,6 +128,7 @@
         }
       }
     },
+    "podSecurityContext": { "type": "object" },
     "pod": {
       "type": "object",
       "additionalProperties": false,
@@ -318,35 +319,6 @@
                     "enabled":    { "type": "boolean" },
                     "secretName": { "type": "string" }
                   }
-                },
-                "gitops": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "enabled": { "type": "boolean" },
-                    "repos": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["name", "url"],
-                        "properties": {
-                          "name":           { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$", "minLength": 1 },
-                          "url":            { "type": "string", "minLength": 1 },
-                          "allowedSigners": { "type": "string" }
-                        }
-                      }
-                    },
-                    "ssh": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "secretName": { "type": "string" },
-                        "secretKey":  { "type": "string", "minLength": 1 },
-                        "knownHosts": { "type": "string" }
-                      }
-                    }
-                  }
                 }
               }
             }
@@ -385,6 +357,101 @@
                     }
                   }
                 }
+              }
+            }
+          }
+        },
+        "gitops": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port":    { "type": "integer" },
+            "resources": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "memory": { "type": "string" },
+                    "cpu":    { "type": "string" }
+                  }
+                },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "memory": { "type": "string" },
+                    "cpu":    { "type": "string" }
+                  }
+                }
+              }
+            },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "registry":   { "type": "string" },
+                "repository": { "type": "string" },
+                "tag":        { "type": "string" },
+                "digest":     { "type": "string" },
+                "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+              }
+            },
+            "credentials": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "ssh": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "secretName": { "type": "string" },
+                    "secretKey":  { "type": "string" },
+                    "knownHosts": { "type": "string" }
+                  }
+                },
+                "https": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["host", "secretName"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "host":       { "type": "string" },
+                      "login":      { "type": "string" },
+                      "secretName": { "type": "string" },
+                      "secretKey":  { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
+            "repos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "url"],
+                "additionalProperties": false,
+                "properties": {
+                  "name":             { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+                  "url":              { "type": "string" },
+                  "allowedSigners":   { "type": "string" },
+                  "verifyCommit":     { "type": "boolean" },
+                  "commandQueueSize": { "type": "integer", "minimum": 1 }
+                }
+              }
+            },
+            "webhook": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "haWebhookId":    { "type": "string" },
+                "queueSize":      { "type": "integer", "minimum": 0 },
+                "maxBatchSize":   { "type": "integer", "minimum": 0 },
+                "batchInterval":  { "type": "string" }
               }
             }
           }

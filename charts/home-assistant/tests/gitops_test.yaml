@@ -2,348 +2,392 @@ suite: GitOps
 templates:
   - templates/statefulset.yaml
   - templates/configmap-gitops.yaml
-  - templates/configmap-gitops-signers.yaml
-
+  - templates/service-gitops.yaml
 tests:
-  - it: gitops ConfigMap is rendered when gitops is enabled
-    template: templates/configmap-gitops.yaml
+  # Sidecar placement and configuration
+  - it: gitops sidecar is in containers[1] not in initContainers
+    template: templates/statefulset.yaml
     values:
-      - fixtures/gitops-minimal.yaml
+      - fixtures/gitops-ssh.yaml
     asserts:
-      - hasDocuments:
-          count: 1
       - equal:
-          path: metadata.name
-          value: RELEASE-NAME-home-assistant-gitops
-      - exists:
-          path: data.gitops
-      - exists:
-          path: data["gitops-setup"]
+          path: spec.template.spec.containers[1].name
+          value: gitops
+      - notContains:
+          path: spec.template.spec.initContainers
+          content:
+            name: gitops
+
+  - it: sidecar has GITOPS_PORT and GITOPS_CONFIG_FILE env vars
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-ssh.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].env
+          content:
+            name: GITOPS_PORT
+            value: "9001"
+      - contains:
+          path: spec.template.spec.containers[1].env
+          content:
+            name: GITOPS_CONFIG_FILE
+            value: /run/gitops-runtime/config.json
+
+  - it: sidecar has least-privilege security context without readOnlyRootFilesystem
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-ssh.yaml
+    asserts:
       - equal:
-          path: data.repos
-          value: "ha-config"
-
-  - it: gitops ConfigMap is absent when gitops is disabled
-    template: templates/configmap-gitops.yaml
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: gitops-setup script contains SSH hardened client config
-    template: templates/configmap-gitops.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - matchRegex:
-          path: data["gitops-setup"]
-          pattern: "StrictHostKeyChecking yes"
-      - matchRegex:
-          path: data["gitops-setup"]
-          pattern: "IdentitiesOnly yes"
-      - matchRegex:
-          path: data["gitops-setup"]
-          pattern: "IdentityFile /run/secrets/gitops/ssh_key"
-      - matchRegex:
-          path: data["gitops-setup"]
-          pattern: "UserKnownHostsFile"
-
-  - it: gitops-setup script verifies SSH key is readable
-    template: templates/configmap-gitops.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - matchRegex:
-          path: data["gitops-setup"]
-          pattern: "/run/secrets/gitops/ssh_key"
-
-  - it: gitops runtime script exposes clone stage deploy get sub-commands
-    template: templates/configmap-gitops.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - matchRegex:
-          path: data.gitops
-          pattern: "cmd_clone"
-      - matchRegex:
-          path: data.gitops
-          pattern: "cmd_stage"
-      - matchRegex:
-          path: data.gitops
-          pattern: "cmd_deploy"
-      - matchRegex:
-          path: data.gitops
-          pattern: "cmd_get"
-      - notMatchRegex:
-          path: data.gitops
-          pattern: "cmd_setup"
-      - notMatchRegex:
-          path: data.gitops
-          pattern: "cmd_check"
-
-  - it: gitops-check script is absent from ConfigMap
-    template: templates/configmap-gitops.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
+          path: spec.template.spec.containers[1].securityContext.runAsUser
+          value: 1000
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.runAsGroup
+          value: 1000
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.allowPrivilegeEscalation
+          value: false
+      - contains:
+          path: spec.template.spec.containers[1].securityContext.capabilities.drop
+          content: ALL
       - notExists:
-          path: data["gitops-check"]
+          path: spec.template.spec.containers[1].securityContext.readOnlyRootFilesystem
 
-  - it: gitops-init init container runs gitops-setup
+  - it: sidecar exposes container port named gitops on the configured port
     template: templates/statefulset.yaml
     values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - equal:
-          path: spec.template.spec.initContainers[0].name
-          value: gitops-init
-      - equal:
-          path: spec.template.spec.initContainers[0].command
-          value: [sh, /run/gitops/gitops-setup]
-
-  - it: knownHosts is present in ConfigMap data for SSH repos
-    template: templates/configmap-gitops.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - equal:
-          path: data.knownHosts
-          value: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
-
-  - it: gitops-signers ConfigMap is rendered with repo name as key when allowedSigners is configured
-    template: templates/configmap-gitops-signers.yaml
-    values:
-      - fixtures/gitops-with-allowed-signers.yaml
-    asserts:
-      - hasDocuments:
-          count: 1
-      - equal:
-          path: metadata.name
-          value: RELEASE-NAME-home-assistant-gitops-signers
-      - equal:
-          path: data["ha-config"]
-          value: "user@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
-
-  - it: gitops-signers ConfigMap is absent when no repos have allowedSigners
-    template: templates/configmap-gitops-signers.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - hasDocuments:
-          count: 0
-
-  - it: gitops-init mounts the gitops-signers ConfigMap when allowedSigners are configured
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-with-allowed-signers.yaml
+      - fixtures/gitops-ssh.yaml
     asserts:
       - contains:
-          path: spec.template.spec.initContainers[0].volumeMounts
+          path: spec.template.spec.containers[1].ports
           content:
-            name: gitops-signers-configmap
-            mountPath: /run/gitops-signers
-            readOnly: true
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-signers-configmap
-            configMap:
-              name: RELEASE-NAME-home-assistant-gitops-signers
-              defaultMode: 420
+            name: gitops
+            containerPort: 9001
+            protocol: TCP
 
-  - it: gitops-signers volume and mount are absent when no repos have allowedSigners
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - notContains:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          content:
-            name: gitops-signers-configmap
-      - notContains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-signers-configmap
-
-  - it: gitops-init mounts the gitops-configmap ConfigMap
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - contains:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          content:
-            name: gitops-configmap
-            mountPath: /run/gitops
-            readOnly: true
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-configmap
-            configMap:
-              name: RELEASE-NAME-home-assistant-gitops
-              defaultMode: 420
-
-  - it: SSH volume and mount are configured correctly for SSH repos
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-ssh-key
-            secret:
-              secretName: ha-gitops-ssh
-              defaultMode: 256
-      - contains:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          content:
-            name: gitops-ssh-key
-            mountPath: /run/secrets/gitops/ssh_key
-            subPath: id_ed25519
-            readOnly: true
-
-  - it: main container mounts SSH key for runtime gitops clone
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: gitops-ssh-key
-            mountPath: /run/secrets/gitops/ssh_key
-            subPath: id_ed25519
-            readOnly: true
-
-  - it: gitops-ssh-key volume uses user-supplied secret name
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    set:
-      homeAssistant.initContainer.tasks.gitops.ssh.secretName: my-custom-gitops-secret
-    asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-ssh-key
-            secret:
-              secretName: my-custom-gitops-secret
-              defaultMode: 256
-
-  - it: gitops-ssh-key volume mount uses custom secretKey as subPath
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    set:
-      homeAssistant.initContainer.tasks.gitops.ssh.secretKey: id_rsa
-    asserts:
-      - contains:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          content:
-            name: gitops-ssh-key
-            mountPath: /run/secrets/gitops/ssh_key
-            subPath: id_rsa
-            readOnly: true
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: gitops-ssh-key
-            mountPath: /run/secrets/gitops/ssh_key
-            subPath: id_rsa
-            readOnly: true
-
-  - it: HTTPS repo does not add SSH volumes or knownHosts to the ConfigMap
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-https.yaml
-    asserts:
-      - notContains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-ssh-key
-      - notContains:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          content:
-            name: gitops-ssh-key
-
-  - it: HTTPS repo ConfigMap does not contain knownHosts
-    template: templates/configmap-gitops.yaml
-    values:
-      - fixtures/gitops-https.yaml
-    asserts:
-      - notExists:
-          path: data.knownHosts
-
-  - it: HTTPS repo main container does not mount SSH key
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-https.yaml
-    asserts:
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: gitops-ssh-key
-
-  - it: gitops-init and bootstrap both render when gitops and a bootstrap task are enabled together
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-minimal.yaml
-    set:
-      homeAssistant.initContainer.tasks.setupHACS.enabled: true
-      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
-    asserts:
-      - equal:
-          path: spec.template.spec.initContainers[0].name
-          value: gitops-init
-      - equal:
-          path: spec.template.spec.initContainers[1].name
-          value: bootstrap
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-configmap
-            configMap:
-              name: RELEASE-NAME-home-assistant-gitops
-              defaultMode: 420
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: init-scripts
-            configMap:
-              name: RELEASE-NAME-home-assistant-init-scripts
-              defaultMode: 420
-
-  - it: SSH init container gets SSH key mount when repos are mixed
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-mixed-repos.yaml
-    asserts:
-      - contains:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          content:
-            name: gitops-ssh-key
-            mountPath: /run/secrets/gitops/ssh_key
-            subPath: id_ed25519
-            readOnly: true
-
-  - it: SSH key volume is still created at pod level for mixed repos
-    template: templates/statefulset.yaml
-    values:
-      - fixtures/gitops-mixed-repos.yaml
-    asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: gitops-ssh-key
-            secret:
-              secretName: ha-gitops-ssh
-              defaultMode: 256
-
-  - it: gitops volumes and init containers are absent when gitops is disabled
+  - it: no gitops sidecar or init container rendered when gitops is disabled
     template: templates/statefulset.yaml
     asserts:
       - notExists:
           path: spec.template.spec.initContainers
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: home-assistant
       - notExists:
+          path: spec.template.spec.containers[1]
+
+  - it: gitops sidecar uses gitops.resources when overridden
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-ssh.yaml
+    set:
+      homeAssistant.gitops.resources:
+        requests:
+          memory: 128Mi
+          cpu: 100m
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: gitops
+      - equal:
+          path: spec.template.spec.containers[1].resources.requests.memory
+          value: 128Mi
+
+  # Volumes — SSH
+  - it: SSH fixture has correct sidecar mounts, main-container mounts, and volume declarations
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-ssh.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: gitops-runtime
+            mountPath: /run/gitops-runtime
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: gitops-workspace
+            mountPath: /gitops/repos
+      - notContains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: config
+            mountPath: /config
+      - notContains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: gitops-signers
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: gitops-ssh-key
+            mountPath: /run/secrets/gitops-ssh-key
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-workspace
+            mountPath: /gitops/repos
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-runtime
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gitops-ssh-key
+      - contains:
           path: spec.template.spec.volumes
+          content:
+            name: gitops-workspace
+            emptyDir: {}
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-runtime
+            emptyDir: {}
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-ssh-key
+            secret:
+              secretName: ha-ssh-key
+              defaultMode: 288
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-runtime
+            configMap:
+              name: RELEASE-NAME-home-assistant-gitops
+              items:
+                - key: config.json
+                  path: config.json
+                  mode: 420
+                - key: gitconfig
+                  path: gitconfig
+                  mode: 420
+                - key: ssh_config
+                  path: ssh_config
+                  mode: 420
+                - key: known_hosts
+                  path: known_hosts
+                  mode: 420
+                - key: ha-config.gitconfig
+                  path: ha-config/gitconfig
+                  mode: 420
+                - key: ha-config.allowed-signers
+                  path: ha-config/allowed-signers
+                  mode: 420
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-signers
+
+  # Volumes — HTTPS
+  - it: HTTPS fixture has correct sidecar mounts, credential script mode 0755, and no SSH/signers entries
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-https.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: gitops-https-github-com
+            mountPath: /run/secrets/gitops-https/github.com/token
+            subPath: token
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-https-github-com
+            secret:
+              secretName: ha-github-token
+              defaultMode: 288
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-runtime
+            configMap:
+              name: RELEASE-NAME-home-assistant-gitops
+              items:
+                - key: config.json
+                  path: config.json
+                  mode: 420
+                - key: gitconfig
+                  path: gitconfig
+                  mode: 420
+                - key: ha-config.gitconfig
+                  path: ha-config/gitconfig
+                  mode: 420
+                - key: ha-config.credential
+                  path: ha-config/credential
+                  mode: 493
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: gitops-signers
+
+  # Volumes — Mixed
+  - it: mixed fixture has both SSH and HTTPS volumes mounted in sidecar
+    template: templates/statefulset.yaml
+    values:
+      - fixtures/gitops-mixed.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: gitops-ssh-key
+            mountPath: /run/secrets/gitops-ssh-key
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: gitops-https-gitea-example-com
+            mountPath: /run/secrets/gitops-https/gitea.example.com/token
+            subPath: token
+            readOnly: true
+
+  # ConfigMap — SSH
+  - it: SSH ConfigMap has all expected keys, config.json structure, gitconfig dispatch, and webhook notification
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-ssh.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - isNotNullOrEmpty:
+          path: data["config.json"]
+      - isNotNullOrEmpty:
+          path: data["gitconfig"]
+      - isNotNullOrEmpty:
+          path: data["ssh_config"]
+      - isNotNullOrEmpty:
+          path: data["known_hosts"]
+      - matchRegex:
+          path: data["config.json"]
+          pattern: '"workspaceDir":"/gitops/repos"'
+      - matchRegex:
+          path: data["config.json"]
+          pattern: '"name":"ha-config"'
+      - matchRegex:
+          path: data["config.json"]
+          pattern: '"url":"http://localhost:8123/api/webhook/my-webhook-id"'
+      - notMatchRegex:
+          path: data["gitconfig"]
+          pattern: '\[gpg\]'
+      - matchRegex:
+          path: data["gitconfig"]
+          pattern: 'includeIf "hasconfig:remote\.\*\.url:git@github\.com:org/ha-config\.git"'
+      - matchRegex:
+          path: data["gitconfig"]
+          pattern: 'path = /run/gitops-runtime/ha-config/gitconfig'
+      - isNotNullOrEmpty:
+          path: data["ha-config.gitconfig"]
+      - matchRegex:
+          path: data["ha-config.gitconfig"]
+          pattern: '\[gpg\]'
+      - matchRegex:
+          path: data["ha-config.gitconfig"]
+          pattern: 'allowedSignersFile = /run/gitops-runtime/ha-config/allowed-signers'
+      - isNotNullOrEmpty:
+          path: data["ha-config.allowed-signers"]
+      - matchRegex:
+          path: data["ha-config.allowed-signers"]
+          pattern: 'admin@example.com'
+
+  # ConfigMap — HTTPS
+  - it: HTTPS ConfigMap has per-repo credential helper, no SSH keys, and no webhook notification
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-https.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - notExists:
+          path: data["ssh_config"]
+      - notExists:
+          path: data["known_hosts"]
+      - notExists:
+          path: data["credential-github-com"]
+      - notMatchRegex:
+          path: data["config.json"]
+          pattern: '"notification"'
+      - notMatchRegex:
+          path: data["gitconfig"]
+          pattern: 'credential "https://github.com"'
+      - matchRegex:
+          path: data["gitconfig"]
+          pattern: 'includeIf.*ha-config'
+      - isNotNullOrEmpty:
+          path: data["ha-config.gitconfig"]
+      - matchRegex:
+          path: data["ha-config.gitconfig"]
+          pattern: 'credential "https://github.com"'
+      - matchRegex:
+          path: data["ha-config.gitconfig"]
+          pattern: 'helper = /run/gitops-runtime/ha-config/credential'
+      - isNotNullOrEmpty:
+          path: data["ha-config.credential"]
+      - matchRegex:
+          path: data["ha-config.credential"]
+          pattern: '/run/secrets/gitops-https/github.com/token'
+      - matchRegex:
+          path: data["ha-config.credential"]
+          pattern: "'x-access-token'"
+
+  # ConfigMap — Mixed
+  - it: mixed ConfigMap has SSH config and per-repo HTTPS credential helper
+    template: templates/configmap-gitops.yaml
+    values:
+      - fixtures/gitops-mixed.yaml
+    asserts:
+      - isNotNullOrEmpty:
+          path: data["ssh_config"]
+      - isNotNullOrEmpty:
+          path: data["known_hosts"]
+      - notExists:
+          path: data["credential-gitea-example-com"]
+      - isNotNullOrEmpty:
+          path: data["custom-components.gitconfig"]
+      - matchRegex:
+          path: data["custom-components.gitconfig"]
+          pattern: 'credential "https://gitea.example.com"'
+      - isNotNullOrEmpty:
+          path: data["custom-components.credential"]
+      - matchRegex:
+          path: data["custom-components.credential"]
+          pattern: '/run/secrets/gitops-https/gitea.example.com/token'
+
+  # Service
+  - it: gitops Service is ClusterIP with correct name, port, and selector labels
+    template: templates/service-gitops.yaml
+    values:
+      - fixtures/gitops-ssh.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant-gitops
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - contains:
+          path: spec.ports
+          content:
+            name: gitops
+            port: 9001
+            targetPort: gitops
+            protocol: TCP
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: home-assistant
+      - equal:
+          path: spec.selector["app.kubernetes.io/instance"]
+          value: RELEASE-NAME

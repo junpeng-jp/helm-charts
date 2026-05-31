@@ -1,0 +1,25 @@
+persistence:
+  enabled: true
+  size: 5Gi
+
+homeAssistant:
+  gitops:
+    enabled: true
+    port: 9001
+    image:
+      registry: ghcr.io
+      repository: junpeng-jp/ha-gitops-sidecar
+      tag: "1.0.0"
+      pullPolicy: IfNotPresent
+    credentials:
+      ssh:
+        secretName: ha-ssh-key
+        secretKey: id_ed25519
+        knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+    repos:
+      - name: ha-config
+        url: "git@github.com:org/ha-config.git"
+        allowedSigners: "admin@example.com namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+        verifyCommit: true
+    webhook:
+      haWebhookId: "my-webhook-id"

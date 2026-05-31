@@ -1,14 +1,4 @@
-{{- if include "home-assistant.gitopsEnabled" . }}
-{{- $gitops := .Values.homeAssistant.initContainer.tasks.gitops }}
-{{- $isGitOpsSSH := include "home-assistant.isGitOpsSSH" . }}
-{{- $repoNames := list -}}
-{{- $sshRepoNames := list -}}
-{{- range $gitops.repos -}}
-  {{- $repoNames = append $repoNames .name -}}
-  {{- if regexMatch `^(git@|ssh://)` (.url | default "") -}}
-    {{- $sshRepoNames = append $sshRepoNames .name -}}
-  {{- end -}}
-{{- end }}
+{{- if .Values.homeAssistant.gitops.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,16 +6,36 @@ metadata:
   labels:
     {{- include "home-assistant.labels" . | nindent 4 }}
 data:
-  gitops-setup: |-
-    {{- .Files.Get "scripts/gitops-setup" | nindent 4 }}
-  gitops: |-
-    {{- .Files.Get "scripts/gitops" | nindent 4 }}
-  repos: |-
-    {{- join "\n" $repoNames | nindent 4 }}
-  {{- if $isGitOpsSSH }}
-  knownHosts: |
-    {{- $gitops.ssh.knownHosts | nindent 4 }}
-  ssh-repos: |-
-    {{- join "\n" $sshRepoNames | nindent 4 }}
+  config.json: |-
+    {{- include "home-assistant.gitops.configJson" . | nindent 4 }}
+  gitconfig: |-
+    {{- include "home-assistant.gitops.gitconfig" . | nindent 4 }}
+  {{- if .Values.homeAssistant.gitops.credentials.ssh.secretName }}
+  ssh_config: |-
+    {{- include "home-assistant.gitops.sshConfig" . | nindent 4 }}
+  known_hosts: |-
+    {{- .Values.homeAssistant.gitops.credentials.ssh.knownHosts | nindent 4 }}
+  {{- end }}
+  {{- $gitops := .Values.homeAssistant.gitops }}
+  {{- range $gitops.repos }}
+  {{- $repo := . }}
+  {{- $httpsEntry := dict }}
+  {{- range $gitops.credentials.https }}
+  {{- if contains .host $repo.url }}
+  {{- $httpsEntry = . }}
+  {{- end }}
+  {{- end }}
+  {{- if or $httpsEntry.host $repo.allowedSigners }}
+  {{ $repo.name }}.gitconfig: |-
+    {{- include "home-assistant.gitops.repoGitconfig" (dict "repo" $repo "gitops" $gitops) | nindent 4 }}
+  {{- end }}
+  {{- if $httpsEntry.host }}
+  {{ $repo.name }}.credential: |-
+    {{- include "home-assistant.gitops.credentialHelper" (dict "repo" $repo "cred" $httpsEntry) | nindent 4 }}
+  {{- end }}
+  {{- if $repo.allowedSigners }}
+  {{ $repo.name }}.allowed-signers: |-
+    {{- $repo.allowedSigners | nindent 4 }}
+  {{- end }}
   {{- end }}
 {{- end }}

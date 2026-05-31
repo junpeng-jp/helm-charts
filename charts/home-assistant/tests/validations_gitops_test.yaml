@@ -1,0 +1,116 @@
+suite: Validations — GitOps
+templates:
+  - templates/validations.yaml
+tests:
+  - it: fails when gitops is enabled without persistence
+    set:
+      homeAssistant.gitops.enabled: true
+      persistence.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.enabled requires persistence.enabled to be true"
+
+  - it: fails when SSH repo has no ssh.secretName
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:org/ha-config.git"
+          verifyCommit: false
+      homeAssistant.gitops.credentials.ssh.secretName: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: 'homeAssistant.gitops.repos[ha-config]: SSH URL requires homeAssistant.gitops.credentials.ssh.secretName to be set'
+
+  - it: fails when HTTPS repo has no matching https host entry
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "https://github.com/org/ha-config.git"
+          verifyCommit: false
+      homeAssistant.gitops.credentials.https: []
+    asserts:
+      - failedTemplate:
+          errorMessage: 'homeAssistant.gitops.repos[ha-config]: HTTPS URL "https://github.com/org/ha-config.git" has no matching entry in homeAssistant.gitops.credentials.https'
+
+  - it: fails when ssh.secretName is set but knownHosts is empty
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.credentials.ssh.secretName: ha-ssh-key
+      homeAssistant.gitops.credentials.ssh.knownHosts: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.credentials.ssh.secretName requires homeAssistant.gitops.credentials.ssh.knownHosts to be set"
+
+  - it: fails when ssh.secretName is set but ssh.secretKey is empty
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.credentials.ssh.secretName: ha-ssh-key
+      homeAssistant.gitops.credentials.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+      homeAssistant.gitops.credentials.ssh.secretKey: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.credentials.ssh.secretKey must not be empty when homeAssistant.gitops.credentials.ssh.secretName is set"
+
+  - it: fails when repos have duplicate names
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.credentials.ssh.secretName: ha-ssh-key
+      homeAssistant.gitops.credentials.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:org/ha-config.git"
+          verifyCommit: false
+        - name: ha-config
+          url: "git@github.com:org/ha-config2.git"
+          verifyCommit: false
+    asserts:
+      - failedTemplate:
+          errorMessage: 'homeAssistant.gitops.repos: duplicate name "ha-config"; each repo must have a unique name'
+
+  - it: fails when https entries have duplicate hosts
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.credentials.https:
+        - host: github.com
+          secretName: ha-github-token
+          secretKey: token
+        - host: github.com
+          secretName: ha-github-token2
+          secretKey: token
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "https://github.com/org/ha-config.git"
+          verifyCommit: false
+    asserts:
+      - failedTemplate:
+          errorMessage: 'homeAssistant.gitops.credentials.https: duplicate host "github.com"; each HTTPS entry must have a unique host'
+
+  - it: fails when verifyCommit is true but allowedSigners is not set
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.credentials.ssh.secretName: ha-ssh-key
+      homeAssistant.gitops.credentials.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:org/ha-config.git"
+          verifyCommit: true
+          allowedSigners: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: 'homeAssistant.gitops.repos[ha-config]: verifyCommit: true requires allowedSigners to be set'
+
+  - it: passes with valid SSH gitops configuration
+    values:
+      - fixtures/gitops-ssh.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: passes with valid HTTPS gitops configuration
+    values:
+      - fixtures/gitops-https.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
