@@ -166,6 +166,11 @@
 {{- fail "homeAssistant.gitops.enabled requires persistence.enabled to be true" }}
 {{- end }}
 
+# requires at least one repo
+{{- if empty $gitops.repos }}
+{{- fail "homeAssistant.gitops.enabled requires at least one entry in homeAssistant.gitops.repos" }}
+{{- end }}
+
 # SSH repos require ssh.secretName
 {{- range $gitops.repos }}
 {{- if regexMatch `^(git@|ssh://)` .url }}

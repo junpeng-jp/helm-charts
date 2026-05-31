@@ -10,6 +10,14 @@ tests:
       - failedTemplate:
           errorMessage: "homeAssistant.gitops.enabled requires persistence.enabled to be true"
 
+  - it: fails when gitops is enabled with an empty repos list
+    set:
+      homeAssistant.gitops.enabled: true
+      homeAssistant.gitops.repos: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "homeAssistant.gitops.enabled requires at least one entry in homeAssistant.gitops.repos"
+
   - it: fails when SSH repo has no ssh.secretName
     set:
       homeAssistant.gitops.enabled: true
@@ -39,6 +47,10 @@ tests:
       homeAssistant.gitops.enabled: true
       homeAssistant.gitops.credentials.ssh.secretName: ha-ssh-key
       homeAssistant.gitops.credentials.ssh.knownHosts: ""
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:org/ha-config.git"
+          verifyCommit: false
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.gitops.credentials.ssh.secretName requires homeAssistant.gitops.credentials.ssh.knownHosts to be set"
@@ -49,6 +61,10 @@ tests:
       homeAssistant.gitops.credentials.ssh.secretName: ha-ssh-key
       homeAssistant.gitops.credentials.ssh.knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
       homeAssistant.gitops.credentials.ssh.secretKey: ""
+      homeAssistant.gitops.repos:
+        - name: ha-config
+          url: "git@github.com:org/ha-config.git"
+          verifyCommit: false
     asserts:
       - failedTemplate:
           errorMessage: "homeAssistant.gitops.credentials.ssh.secretKey must not be empty when homeAssistant.gitops.credentials.ssh.secretName is set"
