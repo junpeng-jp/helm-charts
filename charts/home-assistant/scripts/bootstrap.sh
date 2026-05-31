@@ -1,11 +1,10 @@
 #!/bin/sh
-set -e
+set -eu
 
 if [ "${HACS_ENABLED}" = "true" ]; then
   URL="https://github.com/hacs/integration/releases/download/${HACS_VERSION}/hacs.zip"
   if [ ! -d /config/custom_components/hacs ]; then
     apk add -q --no-progress unzip
-    mkdir -p /config/custom_components/hacs
     wget -q -O /tmp/hacs.zip "$URL"
     if [ -n "${HACS_SHA256:-}" ]; then
       printf '%s  /tmp/hacs.zip\n' "${HACS_SHA256}" | sha256sum -c - || {
@@ -24,25 +23,7 @@ if [ "${HACS_ENABLED}" = "true" ]; then
       [ -n "$target_version" ] || { echo "ERROR: could not parse MINIMUM_HA_VERSION from hacs/const.py" >&2; exit 1; }
       current_version=$(cat /config/.HA_VERSION)
 
-      target_year=$(echo "${target_version}" | cut -d '.' -f 1)
-      target_month=$(echo "${target_version}" | cut -d '.' -f 2)
-      target_patch=$(echo "${target_version}" | cut -d '.' -f 3)
-      target_patch=${target_patch:-0}
-      current_year=$(echo "${current_version}" | cut -d '.' -f 1)
-      current_month=$(echo "${current_version}" | cut -d '.' -f 2)
-      current_patch=$(echo "${current_version}" | cut -d '.' -f 3)
-      current_patch=${current_patch:-0}
-
-      version_ok=true
-      if [ "${current_year}" -lt "${target_year}" ]; then
-        version_ok=false
-      elif [ "${current_year}" -eq "${target_year}" ] && [ "${current_month}" -lt "${target_month}" ]; then
-        version_ok=false
-      elif [ "${current_year}" -eq "${target_year}" ] && [ "${current_month}" -eq "${target_month}" ] && [ "${current_patch}" -lt "${target_patch}" ]; then
-        version_ok=false
-      fi
-
-      if [ "${version_ok}" = "false" ]; then
+      if [ "$(printf '%s\n%s\n' "${target_version}" "${current_version}" | sort -V | tail -1)" != "${current_version}" ]; then
         rm -rf /config/custom_components/hacs
         echo "ERROR: Home Assistant ${current_version} is too old, HACS requires at least ${target_version}" >&2
         exit 1
@@ -53,13 +34,15 @@ fi
 
 if [ "${SECRETS_ENABLED}" = "true" ]; then
   printf '' > /config/secrets.yaml
+  _secrets_count=0
   for f in "${SECRETS_DIR}"/*; do
     [ -f "$f" ] || continue
-    # Use block scalar (|-) so that quotes, backslashes, and newlines in values
-    # never produce invalid YAML. Trailing newlines are stripped by the |- chomping.
+    _secrets_count=$((_secrets_count + 1))
     printf '%s: |-\n' "$(basename "$f")" >> /config/secrets.yaml
     sed 's/^/  /' "$f" >> /config/secrets.yaml
     printf '\n' >> /config/secrets.yaml
   done
+  [ "$_secrets_count" -eq 0 ] && \
+    printf 'WARNING: %s has no files; /config/secrets.yaml will be empty\n' "$SECRETS_DIR" >&2
 fi
 

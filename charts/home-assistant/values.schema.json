@@ -32,8 +32,8 @@
         }
       }
     },
-    "nameOverride":     { "type": "string" },
-    "fullnameOverride": { "type": "string" },
+    "nameOverride":     { "type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" },
+    "fullnameOverride": { "type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" },
     "replicaCount":          { "type": "integer", "minimum": 1 },
     "podManagementPolicy":   { "type": "string", "enum": ["OrderedReady", "Parallel"] },
     "updateStrategy": {
@@ -128,6 +128,7 @@
         }
       }
     },
+    "podSecurityContext": { "type": "object" },
     "pod": {
       "type": "object",
       "additionalProperties": false,
@@ -229,12 +230,12 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled":       { "type": "boolean" },
-        "storageClass":  { "type": "string" },
-        "accessModes":   { "type": "array", "items": { "type": "string" } },
-        "size":          { "type": "string" },
-        "annotations":   { "type": "object" },
-        "labels":        { "type": "object" },
+        "enabled":        { "type": "boolean" },
+        "storageClass":   { "type": "string" },
+        "accessModes":    { "type": "array", "items": { "type": "string" } },
+        "size":           { "type": "string" },
+        "annotations":    { "type": "object" },
+        "labels":         { "type": "object" },
         "existingClaim":  { "type": "string" },
         "existingVolume": { "type": "string" }
       }
@@ -328,7 +329,7 @@
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "config":  { "type": "object" },
+            "content": { "type": "string" },
             "checkConfig": {
               "type": "object",
               "additionalProperties": false,
@@ -365,6 +366,69 @@
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
+            "port":    { "type": "integer" },
+            "resources": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "memory": { "type": "string" },
+                    "cpu":    { "type": "string" }
+                  }
+                },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "memory": { "type": "string" },
+                    "cpu":    { "type": "string" }
+                  }
+                }
+              }
+            },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "registry":   { "type": "string" },
+                "repository": { "type": "string" },
+                "tag":        { "type": "string" },
+                "digest":     { "type": "string" },
+                "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+              }
+            },
+            "credentials": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "ssh": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "secretName": { "type": "string" },
+                    "secretKey":  { "type": "string" },
+                    "knownHosts": { "type": "string" }
+                  }
+                },
+                "https": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["host", "secretName"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "host":       { "type": "string" },
+                      "login":      { "type": "string" },
+                      "secretName": { "type": "string" },
+                      "secretKey":  { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
             "repos": {
               "type": "array",
               "items": {
@@ -372,22 +436,24 @@
                 "required": ["name", "url"],
                 "additionalProperties": false,
                 "properties": {
-                  "name": { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "url":  { "type": "string" }
+                  "name":             { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+                  "url":              { "type": "string" },
+                  "allowedSigners":   { "type": "string" },
+                  "verifyCommit":     { "type": "boolean" },
+                  "commandQueueSize": { "type": "integer", "minimum": 1 }
                 }
               }
             },
-            "ssh": {
+            "webhook": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "secretName":              { "type": "string" },
-                "secretKey":               { "type": "string" },
-                "knownHostsConfigMap":     { "type": "string" },
-                "allowedSignersConfigMap": { "type": "string" }
+                "haWebhookId":    { "type": "string" },
+                "queueSize":      { "type": "integer", "minimum": 0 },
+                "maxBatchSize":   { "type": "integer", "minimum": 0 },
+                "batchInterval":  { "type": "string" }
               }
-            },
-            "gitWorkspaceSizeLimit": { "type": "string" }
+            }
           }
         }
       }

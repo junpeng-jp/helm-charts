@@ -18,8 +18,9 @@ global:
     digest: ""
     pullPolicy: IfNotPresent
 
-nameOverride: ""
-fullnameOverride: ""
+# nameOverride: home-assistant
+# fullnameOverride: home-assistant
+# Keep at 1 when using ReadWriteOnce storage. Multiple replicas require ReadWriteMany.
 replicaCount: 1
 podManagementPolicy: OrderedReady
 updateStrategy:
@@ -32,10 +33,10 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Extra init containers injected after the chart-managed init containers (gitops-setup, bootstrap)
+# Extra init containers injected after the chart-managed init containers (bootstrap)
 # and before Home Assistant starts. Use this for tasks that depend on bootstrap having already run
 # (e.g. secrets.yaml written, HACS installed, configuration.yaml in place).
-# Names "gitops-setup", "bootstrap", and "check-config" are reserved by the chart.
+# Names "gitops", "bootstrap", and "check-config" are reserved by the chart.
 initContainers: []
 
 env:
@@ -98,9 +99,13 @@ resources:
     memory: 1Gi
     # cpu limit intentionally omitted - Home Assistant automations can cause brief CPU spikes
 
-# podSecurityContext and containerSecurityContext are intentionally omitted.
+# containerSecurityContext is intentionally omitted.
 # home-assistant uses s6-overlay as its init system, which must start as root and write to /run.
 # Setting runAsNonRoot or readOnlyRootFilesystem on the main container causes an immediate crash.
+podSecurityContext: {}
+  # When gitops is enabled, fsGroup: 1000 is injected automatically so the non-root
+  # gitops sidecar can write to the shared workspace emptyDir. Override here if needed.
+  # fsGroup: 1000
 
 pod:
   annotations: {}
@@ -109,6 +114,7 @@ pod:
   affinity: {}
   hostNetwork: false    # Enable only if you want to have auto-discovery of wifi devices via mDNS
 
+# Add services and ports here. Ingress and monitor.metric.port reference ports by their key name.
 networking:
   headlessService:
     publishNotReadyAddresses: true  # include not-yet-ready pods in headless DNS, required for StatefulSet rolling restarts
@@ -118,9 +124,11 @@ networking:
       type: ClusterIP
       ports:
         http:
+          enabled: true
           port: 8123
           protocol: TCP
 
+# Enable gateway (Gateway API) or traefik (Traefik IngressRoute), but not both.
 ingress:
   gateway:
     enabled: false
@@ -153,6 +161,7 @@ persistence:
   existingClaim: ""   # use an existing PVC directly (skips volumeClaimTemplate)
   existingVolume: ""  # bind the volumeClaimTemplate to a specific PV by name, mutually exclusive with existingClaim
 
+# Creates a PodMonitor for the Prometheus Operator. Requires the CRD to be installed in your cluster.
 monitor:
   metric:
     enabled: false
@@ -195,21 +204,31 @@ homeAssistant:
   # Manages /config/configuration.yaml as a read-only ConfigMap mount. Requires persistence.enabled.
   # See: https://www.home-assistant.io/docs/configuration/
   #
-  # Because the mount is read-only, Home Assistant cannot write back to configuration.yaml.
-  # Use HA's !include directive to route mutable sections to PVC-managed files:
+  # content is a raw YAML string written verbatim to /config/configuration.yaml.
+  # Use a literal block scalar (|) in your values file so that HA-specific tags such as
+  # !include and !include_dir_named are preserved exactly as written:
   #
   #   homeAssistant:
   #     configuration:
   #       enabled: true
-  #       config:
-  #         homeassistant: !include homeassistant.yaml
+  #       content: |
+  #         homeassistant:
+  #           packages: !include_dir_named packages/
   #         http:
   #           use_x_forwarded_for: true
   #           trusted_proxies:
   #             - 10.0.0.0/8
   configuration:
     enabled: false
-    config: {}  # freeform YAML, serialised as /config/configuration.yaml content
+    # Raw string written verbatim as /config/configuration.yaml.
+    # Override with a literal block scalar (|) to configure Home Assistant.
+    # For gitops-managed installs, include the gitops/ directory so that deployed
+    # repos are loaded as packages:
+    #
+    #   content: |
+    #     homeassistant:
+    #       packages: !include_dir_named gitops/
+    content: ""
     checkConfig:
       enabled: false  # runs 'hass --script check_config' in an init container before startup. requires configuration.enabled and persistence.enabled
       resources:
@@ -217,42 +236,38 @@ homeAssistant:
           memory: 256Mi
           cpu: 100m
 
-  # Mounts sync.sh for git-managed configuration. Requires persistence.enabled.
-  # sync.sh fetches a git ref, validates with 'hass --script check_config', and copies
-  # specified paths to their destinations. Trigger it from a shell_command automation,
-  # passing --repo, --ref, and --copy arguments.
   gitops:
     enabled: false
-
-    # Git repositories to register. An init container writes the remote URL for each repo to
-    # /config/gitops/<name>/remote on the PVC before Home Assistant starts. Required when enabled.
+    port: 9001
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 50m
+    image:
+      registry: ghcr.io
+      repository: junpeng-jp/gitops-sidecar
+      tag: "latest"
+      digest: ""
+      pullPolicy: IfNotPresent
+    credentials:
+      ssh:
+        secretName: ""
+        secretKey: id_ed25519
+        knownHosts: ""
+      https: []
+      # - host: github.com
+      #   login: x-access-token
+      #   secretName: ha-github-token
+      #   secretKey: token
     repos: []
     # - name: ha-config
-    #   url: git@github.com:your-org/ha-config.git
-
-    ssh:
-      # Name of a Kubernetes Secret containing the SSH deploy key. Required when enabled.
-      # The chart mounts the key at /run/secrets/gitops/ssh_key (mode 0400).
-      secretName: ""
-
-      # Key within the Secret that holds the private key.
-      # Defaults to 'id_ed25519'. Override to match the secret key's name.
-      #   kubectl create secret generic ha-gitops-ssh \
-      #     --from-file=id_ed25519=./ssh/id_ed25519
-      secretKey: "id_ed25519"
-
-      # Name of an existing ConfigMap with a 'known_hosts' key for verifying the git host's
-      # identity. Required when enabled. Create it with:
-      #   kubectl create configmap gitops-known-hosts --from-file=known_hosts=./known_hosts
-      knownHostsConfigMap: ""
-
-      # Name of an existing ConfigMap with an 'allowed_signers' key for commit/tag signature
-      # verification. When set, every sync verifies the fetched commit or annotated tag.
-      # Create it with:
-      #   kubectl create configmap gitops-allowed-signers \
-      #     --from-file=allowed_signers=./allowed_signers
-      allowedSignersConfigMap: ""
-
-    # Maximum size of the in-memory tmpfs used as the git worktree checkout directory.
-    # Increase if your config repo is large.
-    gitWorkspaceSizeLimit: 256Mi
+    #   url: "git@github.com:org/ha-config.git"
+    #   allowedSigners: |
+    #     admin@example.com namespaces="git" ssh-ed25519 AAAAC3...
+    #   verifyCommit: false
+    #   commandQueueSize: 16
+    webhook:
+      haWebhookId: ""
+      queueSize: 0
+      maxBatchSize: 0
+      batchInterval: ""

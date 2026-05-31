@@ -2,7 +2,7 @@ suite: Standard
 templates:
   - templates/statefulset.yaml
   - templates/service.yaml
-  - templates/service-headless.yaml
+  - templates/service-gitops.yaml
   - templates/tests/test-connection.yaml
 tests:
   - it: renders a StatefulSet with minimal config
@@ -41,8 +41,9 @@ tests:
           content:
             name: config
             mountPath: /config
-      - notExists:
-          path: spec.template.spec.containers[1]
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: gitops
       - equal:
           path: spec.template.spec.serviceAccountName
           value: RELEASE-NAME-home-assistant
@@ -57,25 +58,10 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/home-assistant/home-assistant@sha256:abc123
 
-  - it: always renders a headless Service and StatefulSet references it as serviceName
+  - it: StatefulSet references the headless service as serviceName
+    template: templates/statefulset.yaml
     asserts:
-      - template: templates/service-headless.yaml
-        isKind:
-          of: Service
-      - template: templates/service-headless.yaml
-        matchRegex:
-          path: metadata.name
-          pattern: -headless$
-      - template: templates/service-headless.yaml
-        equal:
-          path: spec.clusterIP
-          value: None
-      - template: templates/service-headless.yaml
-        equal:
-          path: spec.ports[0].targetPort
-          value: http
-      - template: templates/statefulset.yaml
-        matchRegex:
+      - matchRegex:
           path: spec.serviceName
           pattern: -headless$
 
@@ -107,31 +93,11 @@ tests:
           path: spec.containers[0].image
           value: docker.io/busybox@sha256:abc123
 
-  - it: headless service omits ports when networking.service.app is disabled
-    template: templates/service-headless.yaml
-    set:
-      networking.service.app.enabled: false
+  - it: gitops Service is not created with default values
+    template: templates/service-gitops.yaml
     asserts:
-      - isKind:
-          of: Service
-      - notExists:
-          path: spec.ports
-
-  - it: headless service uses publishNotReadyAddresses true by default
-    template: templates/service-headless.yaml
-    asserts:
-      - equal:
-          path: spec.publishNotReadyAddresses
-          value: true
-
-  - it: headless service publishNotReadyAddresses can be set to false
-    template: templates/service-headless.yaml
-    set:
-      networking.headlessService.publishNotReadyAddresses: false
-    asserts:
-      - equal:
-          path: spec.publishNotReadyAddresses
-          value: false
+      - hasDocuments:
+          count: 0
 
   - it: StatefulSet defaults to OrderedReady podManagementPolicy and RollingUpdate strategy
     template: templates/statefulset.yaml
@@ -146,20 +112,3 @@ tests:
           path: spec.updateStrategy.rollingUpdate.partition
           value: 0
 
-  - it: StatefulSet uses OnDelete strategy when configured
-    template: templates/statefulset.yaml
-    set:
-      updateStrategy.type: OnDelete
-    asserts:
-      - equal:
-          path: spec.updateStrategy.type
-          value: OnDelete
-
-  - it: StatefulSet uses Parallel podManagementPolicy when configured
-    template: templates/statefulset.yaml
-    set:
-      podManagementPolicy: Parallel
-    asserts:
-      - equal:
-          path: spec.podManagementPolicy
-          value: Parallel

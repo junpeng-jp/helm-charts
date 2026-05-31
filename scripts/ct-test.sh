@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CHARTS="${CHART:-}"
+CHARTS="${1:-}"
 
 if ! kind get clusters | grep -q "^helm-chart-test$"; then
   kind create cluster --config config/kind-config.yaml

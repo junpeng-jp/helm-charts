@@ -2,71 +2,31 @@ suite: Init Containers
 templates:
   - templates/statefulset.yaml
 tests:
-  - it: renders init containers in correct order with gitops, all tasks, and user containers enabled
+  - it: renders init containers in correct order with all tasks and user containers enabled
     values:
-      - fixtures/gitops-minimal.yaml
       - fixtures/init-containers.yaml
     set:
-      homeAssistant.initContainer.tasks.setupHACS.enabled: true
-      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
-      homeAssistant.initContainer.tasks.setupSecretsYaml.enabled: true
-      homeAssistant.initContainer.tasks.setupSecretsYaml.secretName: ha-secrets
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
       homeAssistant.configuration.checkConfig.enabled: true
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: gitops-setup
-      - equal:
-          path: spec.template.spec.initContainers[1].name
           value: bootstrap
       - equal:
-          path: spec.template.spec.initContainers[1].image
+          path: spec.template.spec.initContainers[0].image
           value: docker.io/alpine:3.21
       - equal:
-          path: spec.template.spec.initContainers[2].name
+          path: spec.template.spec.initContainers[1].name
           value: wait-for-mqtt
       - equal:
-          path: spec.template.spec.initContainers[3].name
+          path: spec.template.spec.initContainers[2].name
           value: check-config
       - equal:
-          path: spec.template.spec.initContainers[3].image
+          path: spec.template.spec.initContainers[2].image
           value: ghcr.io/home-assistant/home-assistant:2026.5
       - equal:
-          path: spec.template.spec.initContainers[3].command[0]
+          path: spec.template.spec.initContainers[2].command[0]
           value: hass
-
-  - it: gitops-setup runs as root with DROP ALL and no CHOWN capability
-    values:
-      - fixtures/gitops-minimal.yaml
-    asserts:
-      - equal:
-          path: spec.template.spec.initContainers[0].name
-          value: gitops-setup
-      - equal:
-          path: spec.template.spec.initContainers[0].securityContext.runAsUser
-          value: 0
-      - notExists:
-          path: spec.template.spec.initContainers[0].securityContext.runAsNonRoot
-      - equal:
-          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
-          value: true
-      - equal:
-          path: spec.template.spec.initContainers[0].securityContext.allowPrivilegeEscalation
-          value: false
-      - contains:
-          path: spec.template.spec.initContainers[0].securityContext.capabilities.drop
-          content: ALL
-      - notExists:
-          path: spec.template.spec.initContainers[0].securityContext.capabilities.add
-      - equal:
-          path: spec.template.spec.initContainers[0].volumeMounts
-          value:
-            - name: config
-              mountPath: /config
 
   - it: bootstrap has least-privilege security context with writable root for apk
     set:
@@ -81,6 +41,8 @@ tests:
       - equal:
           path: spec.template.spec.initContainers[0].securityContext.runAsUser
           value: 0
+      - notExists:
+          path: spec.template.spec.initContainers[0].securityContext.runAsNonRoot
       - equal:
           path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
           value: false
@@ -90,6 +52,8 @@ tests:
       - contains:
           path: spec.template.spec.initContainers[0].securityContext.capabilities.drop
           content: ALL
+      - notExists:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.add
       - contains:
           path: spec.template.spec.initContainers[0].env
           content:
@@ -106,9 +70,7 @@ tests:
             name: SECRETS_DIR
             value: "/run/secrets/ha-secrets"
 
-  - it: gitops-setup and bootstrap use homeAssistant.initContainer.resources when overridden
-    values:
-      - fixtures/gitops-minimal.yaml
+  - it: bootstrap uses homeAssistant.initContainer.resources when overridden
     set:
       homeAssistant.initContainer.tasks.setupHACS.enabled: true
       homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
@@ -120,16 +82,10 @@ tests:
       - equal:
           path: spec.template.spec.initContainers[0].resources.requests.memory
           value: 128Mi
-      - equal:
-          path: spec.template.spec.initContainers[1].resources.requests.memory
-          value: 128Mi
 
   - it: check-config uses homeAssistant.configuration.checkConfig.resources when overridden
     set:
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
       homeAssistant.configuration.checkConfig.enabled: true
       homeAssistant.configuration.checkConfig.resources:
         requests:
@@ -142,24 +98,53 @@ tests:
           path: spec.template.spec.initContainers[0].resources.requests.memory
           value: 512Mi
 
-  - it: check-config mounts config PVC and configuration ConfigMap; gitops volumes are excluded
+  - it: bootstrap mounts config PVC and init-scripts ConfigMap; no secrets volume when setupSecretsYaml is disabled
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: bootstrap
+      - equal:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          value:
+            - name: config
+              mountPath: /config
+            - name: init-scripts
+              mountPath: /run/init-scripts
+              readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: init-scripts
+            configMap:
+              name: RELEASE-NAME-home-assistant-init-scripts
+              defaultMode: 420
+
+  - it: bootstrap is in initContainers[0] when gitops and bootstrap are both enabled
     values:
-      - fixtures/gitops-minimal.yaml
+      - fixtures/gitops-ssh.yaml
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: bootstrap
+      - notExists:
+          path: spec.template.spec.initContainers[1]
+
+  - it: check-config mounts config PVC and configuration ConfigMap
     set:
       homeAssistant.configuration.enabled: true
-      homeAssistant.configuration.config:
-        homeassistant:
-          name: Home
       homeAssistant.configuration.checkConfig.enabled: true
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: gitops-setup
-      - equal:
-          path: spec.template.spec.initContainers[1].name
           value: check-config
       - equal:
-          path: spec.template.spec.initContainers[1].volumeMounts
+          path: spec.template.spec.initContainers[0].volumeMounts
           value:
             - name: config
               mountPath: /config
@@ -167,3 +152,28 @@ tests:
               mountPath: /config/configuration.yaml
               subPath: configuration.yaml
               readOnly: true
+
+  - it: init containers run in order bootstrap check-config when all features are enabled
+    values:
+      - fixtures/gitops-ssh.yaml
+    set:
+      homeAssistant.initContainer.tasks.setupHACS.enabled: true
+      homeAssistant.initContainer.tasks.setupHACS.version: "2.0.1"
+      homeAssistant.configuration.enabled: true
+      homeAssistant.configuration.checkConfig.enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: bootstrap
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: check-config
+      - notExists:
+          path: spec.template.spec.initContainers[2]
+
+  - it: no init containers are rendered when only gitops is enabled (gitops is a sidecar not an init container)
+    values:
+      - fixtures/gitops-ssh.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers

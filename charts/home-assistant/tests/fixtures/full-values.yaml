@@ -58,7 +58,7 @@ homeAssistant:
 
   configuration:
     enabled: true
-    config:
+    content: |
       homeassistant:
         name: Home
         latitude: 37.7749
@@ -69,15 +69,38 @@ homeAssistant:
         use_x_forwarded_for: true
         trusted_proxies:
           - 10.0.0.0/8
+      automation: !include automations.yaml
+      script: !include scripts.yaml
+      scene: !include scenes.yaml
     checkConfig:
       enabled: true
 
   gitops:
     enabled: true
+    port: 9001
+    image:
+      registry: ghcr.io
+      repository: junpeng-jp/ha-gitops-sidecar
+      tag: "1.0.0"
+      digest: ""
+      pullPolicy: IfNotPresent
+    credentials:
+      ssh:
+        secretName: ha-ssh-key
+        secretKey: id_ed25519
+        knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+      https:
+        - host: gitea.example.com
+          login: deploy
+          secretName: ha-gitea-token
+          secretKey: token
     repos:
       - name: ha-config
-        url: "git@github.com:example/ha-config.git"
-    ssh:
-      secretName: ha-gitops-ssh-key
-      knownHostsConfigMap: gitops-known-hosts
-      allowedSignersConfigMap: gitops-allowed-signers
+        url: "git@github.com:org/ha-config.git"
+        allowedSigners: "admin@example.com namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+        verifyCommit: true
+      - name: custom-components
+        url: "https://gitea.example.com/org/custom.git"
+        verifyCommit: false
+    webhook:
+      haWebhookId: "my-webhook-id"

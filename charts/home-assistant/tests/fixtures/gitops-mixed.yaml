@@ -1,0 +1,24 @@
+persistence:
+  enabled: true
+  size: 5Gi
+
+homeAssistant:
+  gitops:
+    enabled: true
+    credentials:
+      ssh:
+        secretName: ha-ssh-key
+        secretKey: id_ed25519
+        knownHosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+      https:
+        - host: gitea.example.com
+          login: deploy
+          secretName: ha-gitea-token
+          secretKey: token
+    repos:
+      - name: ha-config
+        url: "git@github.com:org/ha-config.git"
+        verifyCommit: false
+      - name: custom-components
+        url: "https://gitea.example.com/org/custom.git"
+        verifyCommit: false

@@ -1,0 +1,17 @@
+persistence:
+  enabled: true
+  size: 5Gi
+
+homeAssistant:
+  gitops:
+    enabled: true
+    credentials:
+      https:
+        - host: github.com
+          login: x-access-token
+          secretName: ha-github-token
+          secretKey: token
+    repos:
+      - name: ha-config
+        url: "https://github.com/org/ha-config.git"
+        verifyCommit: false

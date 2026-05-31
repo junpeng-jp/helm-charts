@@ -1,0 +1,82 @@
+suite: Validations — Ingress
+templates:
+  - templates/validations.yaml
+tests:
+  - it: fails when both gateway and traefik ingress are enabled simultaneously
+    set:
+      ingress.gateway.enabled: true
+      ingress.traefik.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "Only one ingress mechanism may be enabled at a time (ingress.gateway or ingress.traefik)"
+
+  - it: fails when gateway ingress is enabled but networking.service.app is disabled
+    set:
+      ingress.gateway.enabled: true
+      networking.service.app.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway requires networking.service.app to be enabled"
+
+  - it: fails when gateway ingress is enabled but http port is absent
+    set:
+      ingress.gateway.enabled: true
+      networking.service.app.ports.http: null
+      networking.service.app.ports.other.enabled: true
+      networking.service.app.ports.other.port: 9090
+      networking.service.app.ports.other.protocol: TCP
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway requires networking.service.app.ports.http to be defined and enabled"
+
+  - it: fails when gateway ingress is enabled without hostnames
+    set:
+      ingress.gateway.enabled: true
+      ingress.gateway.hostnames: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway.enabled requires ingress.gateway.hostnames to be set with at least one entry"
+
+  - it: fails when gateway ingress is enabled without parentRefs
+    set:
+      ingress.gateway.enabled: true
+      ingress.gateway.parentRefs: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.gateway.enabled requires ingress.gateway.parentRefs to be set with at least one entry"
+
+  - it: fails when traefik ingress is enabled without hostnames
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.hostnames: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik.enabled requires ingress.traefik.hostnames to be set with at least one entry"
+
+  - it: fails when traefik tls is enabled without secretName or certResolver
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.secretName: ""
+      ingress.traefik.tls.certResolver: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.traefik.tls.enabled requires either ingress.traefik.tls.secretName or ingress.traefik.tls.certResolver to be set"
+
+  - it: traefik tls passes with secretName set
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.secretName: my-tls-secret
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: traefik tls passes with certResolver set
+    set:
+      ingress.traefik.enabled: true
+      ingress.traefik.tls.enabled: true
+      ingress.traefik.tls.certResolver: letsencrypt
+    asserts:
+      - hasDocuments:
+          count: 0

@@ -1,8 +1,12 @@
 suite: Networking
 templates:
   - templates/service.yaml
+  - templates/service-headless.yaml
+  - templates/service-gitops.yaml
 tests:
+  # ClusterIP Service
   - it: renders a ClusterIP Service with port 8123 and correct selector labels
+    template: templates/service.yaml
     asserts:
       - isKind:
           of: Service
@@ -30,6 +34,7 @@ tests:
 
   # The "app" service key gets the chart fullname; any other key gets fullname-suffix.
   - it: names the app service with fullname and additional services with fullname-suffix
+    template: templates/service.yaml
     set:
       networking.service.metrics.enabled: true
       networking.service.metrics.type: ClusterIP
@@ -43,8 +48,47 @@ tests:
         documentIndex: 1
 
   - it: does not render a Service document when the service entry is disabled
+    template: templates/service.yaml
     set:
       networking.service.app.enabled: false
     asserts:
       - hasDocuments:
           count: 0
+
+  # Headless Service
+  - it: renders a headless Service with correct name, clusterIP, port, and publishNotReadyAddresses
+    template: templates/service-headless.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - matchRegex:
+          path: metadata.name
+          pattern: -headless$
+      - equal:
+          path: spec.clusterIP
+          value: None
+      - equal:
+          path: spec.ports[0].targetPort
+          value: http
+      - equal:
+          path: spec.publishNotReadyAddresses
+          value: true
+
+  - it: headless Service omits ports when networking.service.app is disabled
+    template: templates/service-headless.yaml
+    set:
+      networking.service.app.enabled: false
+    asserts:
+      - isKind:
+          of: Service
+      - notExists:
+          path: spec.ports
+
+  - it: headless Service publishNotReadyAddresses can be set to false
+    template: templates/service-headless.yaml
+    set:
+      networking.headlessService.publishNotReadyAddresses: false
+    asserts:
+      - equal:
+          path: spec.publishNotReadyAddresses
+          value: false

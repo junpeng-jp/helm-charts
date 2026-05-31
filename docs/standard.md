@@ -2,7 +2,7 @@
 
 Every chart in this repo follows the same structure. A reader opening any `values.yaml` should find it immediately familiar.
 
-## Field ordering in values.yaml
+## Order fields in values.yaml
 
 ```
 0. global                 — image registry and pull settings
@@ -20,17 +20,21 @@ Every chart in this repo follows the same structure. A reader opening any `value
 
 ---
 
-## Schema validation
+## Ship a schema
 
-Ship `values.schema.json`. Requirements:
+Ship `values.schema.json` with every chart. The schema must:
 
-- `"$schema": "https://json-schema.org/draft-07/schema#"`, `"type": "object"`
+- Set `"$schema": "https://json-schema.org/draft-07/schema#"` and `"type": "object"`
 - Define every top-level key from `values.yaml`
-- `"additionalProperties": false` at the top level
-- `"required"` for fields with no meaningful default
-- `"enum"` for `pullPolicy`; `"pattern"` for tags where practical
+- Set `"additionalProperties": false` at the top level
+- Use `"required"` for fields with no meaningful default
+- Use `"enum"` for `pullPolicy`; use `"pattern"` for tags where practical
 
-### Use `empty` not `not` for maps and lists
+**Division of responsibility**: `values.schema.json` owns structural validation — types, `additionalProperties`, `enum`, `pattern`, and unconditionally required fields. `validations.yaml` owns everything conditional: fields required only when a feature is enabled, mutual exclusions, and cross-feature dependencies. This keeps the schema readable and makes all conditional logic unit-testable via `helm unittest`.
+
+Do not use `if/then`, `allOf`, or `not` in the schema for conditional requirements or mutual exclusions — express those in `validations.yaml` instead.
+
+### Use `empty` not `not` for maps and lists in `validations.yaml`
 
 `not` is `true` for nil but `false` for `{}` and `[]`. `empty` is `true` for all three.
 
@@ -40,25 +44,6 @@ Ship `values.schema.json`. Requirements:
 
 {{- /* Good */ -}}
 {{- if and .Values.feature.enabled (empty .Values.feature.config) }}
-```
-
-### Validate sibling features symmetrically
-
-When two features share the same shape, apply the same validation to both. Checking one and silently accepting the other creates an inconsistent failure surface.
-
-```
-{{- /* Bad — gateway hostnames silently accept [] */ -}}
-{{- if and .Values.ingress.traefik.enabled (empty .Values.ingress.traefik.hostnames) }}
-{{- fail "traefik.hostnames must have at least one entry" }}
-{{- end }}
-
-{{- /* Good */ -}}
-{{- if and .Values.ingress.traefik.enabled (empty .Values.ingress.traefik.hostnames) }}
-{{- fail "traefik.hostnames must have at least one entry" }}
-{{- end }}
-{{- if and .Values.ingress.gateway.enabled (empty .Values.ingress.gateway.hostnames) }}
-{{- fail "gateway.hostnames must have at least one entry" }}
-{{- end }}
 ```
 
 ---
@@ -76,7 +61,7 @@ global:
     pullSecrets: []
 ```
 
-`_helpers.tpl` rendering pattern — digest takes precedence over tag:
+Render the image reference in `_helpers.tpl` with digest taking precedence over tag:
 
 ```
 {{- define "<chart>.image" -}}
@@ -133,7 +118,7 @@ Duplicate volume names cause a Kubernetes admission rejection. Set `name` to dis
 
 `extraVolumes` and `extraVolumeMounts` pass through full Kubernetes specs unchanged.
 
-### Health probes
+### Configure health probes
 
 Include probes only when the app exposes a known HTTP health endpoint. When it doesn't, omit all probe fields and add a one-line comment in the workload template.
 
@@ -159,7 +144,7 @@ readinessProbe:
   failureThreshold: 3
 ```
 
-Template pattern — use `omit` to strip the `enabled` key before rendering:
+Use `omit` to strip the `enabled` key before rendering:
 
 ```
 {{- if .Values.startupProbe.enabled }}
@@ -168,9 +153,9 @@ startupProbe:
 {{- end }}
 ```
 
-### Resource limits
+### Set resource limits
 
-Always set `requests` and `limits`. You may omit CPU limits for workloads that spike; document the reason.
+Set both `requests` and `limits`. You may omit CPU limits for workloads that spike; document the reason.
 
 ```yaml
 resources:
@@ -192,7 +177,7 @@ Follow Bitnami convention: `podSecurityContext` for shared pod settings, `contai
 
 ### Pod security context
 
-Inherited by all containers. Governs volume ownership, supplemental groups, and kernel parameters.
+`podSecurityContext` applies to all containers. It governs volume ownership, supplemental groups, and kernel parameters.
 
 ```yaml
 podSecurityContext:
@@ -206,7 +191,7 @@ podSecurityContext:
 
 ### Container security context
 
-Applies to the main container only. Overrides pod-level defaults.
+`containerSecurityContext` applies to the main container only and overrides pod-level defaults.
 
 ```yaml
 containerSecurityContext:
@@ -254,7 +239,7 @@ networking:
 
 One service name is the **primary** service. Name it `app`, `http`, or whatever fits the application. Document the choice in a comment above the naming logic. The primary service renders without a name suffix; others get `<fullname>-<svcName>`.
 
-### Port-enabled predicate
+### Use the port-enabled predicate correctly
 
 The `enabled` field is tri-state: absent = enabled, `true` = enabled, `false` = disabled. Use `not (eq $port.enabled false)` in `service.yaml`, the workload template, and `validations.yaml`. All three must use the **exact same predicate** — a mismatch lets misconfigured values pass validation while producing a broken resource at runtime.
 
@@ -268,7 +253,7 @@ The `enabled` field is tri-state: absent = enabled, `true` = enabled, `false` = 
 {{- if not (eq $port.enabled false) }}
 ```
 
-Template patterns:
+Apply this predicate consistently across templates:
 
 ```
 {{- /* service.yaml */ -}}
@@ -318,7 +303,7 @@ spec:
 
 StatefulSet charts must render a headless Service. Include `targetPort` on every port entry — Kubernetes doesn't enforce it for headless services, but omitting it creates an inconsistency with the primary Service.
 
-### Multi-protocol ports
+### Model multi-protocol ports separately
 
 Model each physical port as a separate map entry. Two entries may share the same `port` number when `protocol` differs.
 

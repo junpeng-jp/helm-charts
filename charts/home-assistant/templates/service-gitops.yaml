@@ -1,0 +1,17 @@
+{{- if .Values.homeAssistant.gitops.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-gitops
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "home-assistant.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: gitops
+      port: {{ .Values.homeAssistant.gitops.port }}
+      targetPort: gitops
+      protocol: TCP
+{{- end }}
