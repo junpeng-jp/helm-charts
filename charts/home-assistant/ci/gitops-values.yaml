@@ -11,6 +11,4 @@ homeAssistant:
   gitops:
     enabled: true
     repos: []
-    webhook:
-      secretName: ha-gitops-webhook
-      secretKey: secret
+    webhook: {}
